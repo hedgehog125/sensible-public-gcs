@@ -1,0 +1,2 @@
+Send a response instead of a redirect when the object is small? Otherwise it could be requested many times in the 10 seconds
+Proxy all requests as the signed URL could be requested thousands of times simultaniously instead of just once
