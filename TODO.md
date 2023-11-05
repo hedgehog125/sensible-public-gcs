@@ -1,2 +1,3 @@
 Send a response instead of a redirect when the object is small? Otherwise it could be requested many times in the 10 seconds
-Proxy all requests as the signed URL could be requested thousands of times simultaniously instead of just once
+Assume each signed URL will be used 100 times and have that assumed usage accumulate until disproven by overall usage a while after. Start proxying when a request would otherwise the total assumed usage to go over a limit (90GB?). Only count each request as the size of the object but can be partly refunded if the later overall usage disproves it
+Are client aborts proxied correctly?
