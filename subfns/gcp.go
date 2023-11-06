@@ -5,9 +5,11 @@ import (
 	"fmt"
 	"os"
 
+	monitoring "cloud.google.com/go/monitoring/apiv3/v2"
 	"cloud.google.com/go/storage"
 	"github.com/hedgeghog125/sensible-public-gcs/constants"
 	"github.com/hedgeghog125/sensible-public-gcs/intertypes"
+	"github.com/hedgeghog125/sensible-public-gcs/util"
 )
 
 func CreateGCSKeyFile() {
@@ -33,4 +35,19 @@ func CreateGCSBucketClient(env *intertypes.Env) *storage.BucketHandle {
 
 	bucket := client.Bucket(env.GCS_BUCKET_NAME)
 	return bucket
+}
+func CreateGCPMonitoringClient() *monitoring.QueryClient {
+	client, err := monitoring.NewQueryClient(context.Background())
+	if err != nil {
+		panic(fmt.Sprintf("couldn't create monitoring client. error:\n%v", err.Error()))
+	}
+
+	return client
+}
+func GCPMonitoringTick(recordedEgress *int64, client *monitoring.QueryClient, env *intertypes.Env) {
+	value, err := util.GetEgress(client, env)
+	if err == nil {
+		fmt.Println(value)
+		*recordedEgress = value
+	}
 }

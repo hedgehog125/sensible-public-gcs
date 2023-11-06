@@ -3,6 +3,7 @@ package endpoints
 import (
 	"io"
 	"net/http"
+	"net/url"
 	"time"
 
 	"cloud.google.com/go/storage"
@@ -12,16 +13,21 @@ import (
 )
 
 func Redirect(r *gin.Engine, bucket *storage.BucketHandle) {
+	// It doesn't need to be cryptographically secure, it just needs to be long and incompressible
+	longValue := util.RandomString(constants.RANDOM_QUERY_LENGTH)
+	longQueryParams := url.Values{}
+	longQueryParams.Add("rand", longValue)
+
 	r.GET("/v1/redirect/*path", func(ctx *gin.Context) {
-		if false {
-			sendRedirect(ctx, bucket)
+		if true {
+			sendRedirect(ctx, bucket, &longQueryParams)
 		} else {
 			sendByProxy(ctx, bucket)
 		}
 	})
 }
-func sendRedirect(ctx *gin.Context, bucket *storage.BucketHandle) {
-	objURL, err := createSignedURLForRequest(ctx, bucket)
+func sendRedirect(ctx *gin.Context, bucket *storage.BucketHandle, longQueryParams *url.Values) {
+	objURL, err := createSignedURLForRequest(ctx, bucket, longQueryParams)
 	if err != nil {
 		util.Send500(ctx)
 		return
@@ -32,7 +38,7 @@ func sendRedirect(ctx *gin.Context, bucket *storage.BucketHandle) {
 	ctx.Redirect(307, objURL)
 }
 func sendByProxy(ctx *gin.Context, bucket *storage.BucketHandle) {
-	objURL, err := createSignedURLForRequest(ctx, bucket)
+	objURL, err := createSignedURLForRequest(ctx, bucket, nil)
 	if err != nil {
 		util.Send500(ctx)
 		return
@@ -57,12 +63,14 @@ func sendByProxy(ctx *gin.Context, bucket *storage.BucketHandle) {
 	ctx.Status(res.StatusCode)
 	io.Copy(ctx.Writer, res.Body)
 }
-func createSignedURLForRequest(ctx *gin.Context, bucket *storage.BucketHandle) (string, error) {
+func createSignedURLForRequest(ctx *gin.Context, bucket *storage.BucketHandle, longQueryParams *url.Values) (string, error) {
 	return bucket.SignedURL(
 		ctx.Param("path")[1:],
 		&storage.SignedURLOptions{
-			Method:  "GET",
-			Expires: time.Now().Add(10 * time.Second),
+			Method:          "GET",
+			Expires:         time.Now().Add(3 * time.Second),
+			Scheme:          storage.SigningSchemeV4,
+			QueryParameters: *longQueryParams,
 		},
 	)
 }
