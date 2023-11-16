@@ -44,10 +44,10 @@ func CreateGCPMonitoringClient() *monitoring.QueryClient {
 
 	return client
 }
-func GCPMonitoringTick(recordedEgress *int64, client *monitoring.QueryClient, env *intertypes.Env) {
+func GCPMonitoringTick(client *monitoring.QueryClient, state *intertypes.State, env *intertypes.Env) {
 	value, err := util.GetEgress(client, env)
 	if err == nil {
-		fmt.Println(value)
-		*recordedEgress = value
+		state.MeasuredEgress = value
+		fmt.Println(state.MeasuredEgress)
 	}
 }

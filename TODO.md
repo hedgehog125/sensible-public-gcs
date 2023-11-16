@@ -1,3 +1,3 @@
-Send a response instead of a redirect when the object is small? Otherwise it could be requested many times in the 10 seconds
-Assume each signed URL will be used 100 times and have that assumed usage accumulate until disproven by overall usage a while after. Start proxying when a request would otherwise the total assumed usage to go over a limit (90GB?). Only count each request as the size of the object but can be partly refunded if the later overall usage disproves it
+Delete users once their egress resets
+Allow concurrent reads if there are no writes
 Are client aborts proxied correctly?

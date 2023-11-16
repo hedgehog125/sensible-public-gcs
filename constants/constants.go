@@ -2,7 +2,8 @@ package constants
 
 const NORMAL_PERMISSION = 0700
 const GCS_KEY_PATH = "secret/gcs.json"
-const RANDOM_QUERY_LENGTH = 15_000
+const ASSUMED_OVERHEAD = 100_000
+const MIN_REQUEST_EGRESS = 5_000_000
 
 var PROXIED_HEADERS = []string{
 	"age",

@@ -1,0 +1,15 @@
+package intertypes
+
+type State struct {
+	Users          map[string]*chan *User
+	MeasuredEgress int64
+	// MeasuredEgress is usually a few minutes behind the actual egress usage
+	//
+	// Add this value to MeasuredEgress to get a cautiously large figure for the egress
+	ProvisionalAdditionalEgress *chan int64
+}
+type User struct {
+	EgressUsed int64
+	// A Unix epoch
+	ResetAt int64
+}

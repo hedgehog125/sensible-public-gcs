@@ -25,7 +25,7 @@ func RequireIntEnv(name string) int {
 
 	value, err := strconv.Atoi(rawValue)
 	if err != nil {
-		panic(fmt.Sprintf("couldn't parse environment variable \"%v\" into an interger", name))
+		panic(fmt.Sprintf("couldn't parse environment variable \"%v\" into an integer", name))
 	}
 
 	return value

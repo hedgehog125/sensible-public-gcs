@@ -11,19 +11,19 @@ var env intertypes.Env
 
 func main() {
 	env = subfns.LoadEnvironmentVariables()
+	state := subfns.InitState()
 
 	subfns.CreateGCSKeyFile()
 	bucket := subfns.CreateGCSBucketClient(&env)
 	mClient := subfns.CreateGCPMonitoringClient()
-	recordedEgress := int64(0)
-	subfns.GCPMonitoringTick(&recordedEgress, mClient, &env)
+	subfns.GCPMonitoringTick(mClient, &state, &env)
 
 	r := subfns.CreateServer()
 	subfns.AddMiddleware(r, &env)
-	subfns.RegisterEndpoints(r, bucket)
+	subfns.RegisterEndpoints(r, bucket, &state, &env)
 	go subfns.StartServer(r, &env)
 	for {
 		time.Sleep(time.Minute)
-		subfns.GCPMonitoringTick(&recordedEgress, mClient, &env)
+		subfns.GCPMonitoringTick(mClient, &state, &env)
 	}
 }

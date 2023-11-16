@@ -18,7 +18,16 @@ func LoadEnvironmentVariables() intertypes.Env {
 	env.GCS_BUCKET_NAME = util.RequireEnv("GCS_BUCKET_NAME")
 	env.GCP_PROJECT_NAME = util.RequireEnv("GCP_PROJECT_NAME")
 
+	env.DAILY_EGRESS_PER_USER = int64(util.RequireIntEnv("DAILY_EGRESS_PER_USER"))
+
 	env.IS_DEV = util.RequireEnv("GIN_MODE") == "debug"
 
 	return env
+}
+func InitState() intertypes.State {
+	state := intertypes.State{
+		Users: make(map[string]*chan *intertypes.User),
+	}
+
+	return state
 }
