@@ -12,7 +12,7 @@ import (
 	"google.golang.org/api/iterator"
 )
 
-// For this billing cycle
+// For this billing cycle, doesn't subtract the initial value
 func GetEgress(client *monitoring.QueryClient, env *intertypes.Env) (int64, error) {
 	now := time.Now()
 	startOfTheMonth := time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, time.UTC)
@@ -43,4 +43,9 @@ func GetEgress(client *monitoring.QueryClient, env *intertypes.Env) (int64, erro
 	}
 
 	return value.Int64Value, nil
+}
+func CalculateCautiousEgress(state *intertypes.State) int64 {
+	return state.MeasuredEgress + ReadAndResendChannel[int64](
+		state.ProvisionalAdditionalEgress,
+	)
 }

@@ -44,10 +44,22 @@ func CreateGCPMonitoringClient() *monitoring.QueryClient {
 
 	return client
 }
-func GCPMonitoringTick(client *monitoring.QueryClient, state *intertypes.State, env *intertypes.Env) {
+func GCPMonitoringTick(client *monitoring.QueryClient, isInitialTick bool, state *intertypes.State, env *intertypes.Env) {
 	value, err := util.GetEgress(client, env)
-	if err == nil {
-		state.MeasuredEgress = value
-		fmt.Println(state.MeasuredEgress)
+	if isInitialTick {
+		if err != nil {
+			panic("initial egress check failed")
+		}
+
+		if env.MEASURE_TOTAL_EGRESS_FROM_ZERO { // Otherwise leave it at 0
+			state.InitialMeasuredEgress = value
+		}
+		state.MeasuredEgress = value - state.InitialMeasuredEgress
+		return
 	}
+
+	if err != nil {
+		return
+	}
+	state.MeasuredEgress = value - state.InitialMeasuredEgress
 }

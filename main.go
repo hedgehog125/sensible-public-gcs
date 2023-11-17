@@ -16,7 +16,7 @@ func main() {
 	subfns.CreateGCSKeyFile()
 	bucket := subfns.CreateGCSBucketClient(&env)
 	mClient := subfns.CreateGCPMonitoringClient()
-	subfns.GCPMonitoringTick(mClient, &state, &env)
+	subfns.GCPMonitoringTick(mClient, true, &state, &env)
 
 	r := subfns.CreateServer()
 	subfns.AddMiddleware(r, &env)
@@ -24,6 +24,6 @@ func main() {
 	go subfns.StartServer(r, &env)
 	for {
 		time.Sleep(time.Minute)
-		subfns.GCPMonitoringTick(mClient, &state, &env)
+		subfns.GCPMonitoringTick(mClient, false, &state, &env)
 	}
 }

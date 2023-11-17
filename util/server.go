@@ -12,7 +12,9 @@ import (
 func Send500(ctx *gin.Context) {
 	ctx.Data(500, "text/plain", []byte(""))
 }
-
+func Send503(ctx *gin.Context) {
+	ctx.Data(503, "text/plain", []byte(""))
+}
 func Send429(ctx *gin.Context, user *intertypes.User) {
 	secondsUntilReset := user.ResetAt - time.Now().Unix()
 	ctx.Header("retry-after", strconv.FormatInt(secondsUntilReset, 10))

@@ -19,6 +19,8 @@ func LoadEnvironmentVariables() intertypes.Env {
 	env.GCP_PROJECT_NAME = util.RequireEnv("GCP_PROJECT_NAME")
 
 	env.DAILY_EGRESS_PER_USER = int64(util.RequireIntEnv("DAILY_EGRESS_PER_USER"))
+	env.MAX_TOTAL_EGRESS = int64(util.RequireIntEnv("MAX_TOTAL_EGRESS"))
+	env.MEASURE_TOTAL_EGRESS_FROM_ZERO = util.RequireEnv("MEASURE_TOTAL_EGRESS_FROM_ZERO") == "true"
 
 	env.IS_DEV = util.RequireEnv("GIN_MODE") == "debug"
 
@@ -26,8 +28,10 @@ func LoadEnvironmentVariables() intertypes.Env {
 }
 func InitState() intertypes.State {
 	state := intertypes.State{
-		Users: make(map[string]*chan *intertypes.User),
+		Users:                       make(map[string]*chan *intertypes.User),
+		ProvisionalAdditionalEgress: util.Pointer[chan int64](make(chan int64)),
 	}
+	go func() { *state.ProvisionalAdditionalEgress <- 0 }()
 
 	return state
 }
