@@ -151,6 +151,7 @@ func Object(r *gin.Engine, bucket *storage.BucketHandle, state *intertypes.State
 		cautiousTotalEgress = state.MeasuredEgress + provEgress
 		if cautiousTotalEgress+reqEgress > env.MAX_TOTAL_EGRESS {
 			_ = res.Body.Close()
+			reqEgress = constants.MIN_REQUEST_EGRESS // So the defer subtracts the right value
 			go func() { *state.ProvisionalAdditionalEgress <- provEgress }()
 			util.Send503(ctx)
 			return
