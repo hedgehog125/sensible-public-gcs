@@ -1,6 +1,8 @@
 package endpoints
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -16,6 +18,27 @@ import (
 
 func Object(r *gin.Engine, bucket *storage.BucketHandle, state *intertypes.State, env *intertypes.Env) {
 	r.GET("/v1/object/*path", func(ctx *gin.Context) {
+		reqCount := <-*state.MonthlyRequestCount
+		newReqCount := reqCount + 1
+		if newReqCount >= env.MAX_TOTAL_REQUESTS {
+			go func() { *state.MonthlyRequestCount <- reqCount }()
+			util.Send503(ctx)
+			return
+		}
+		reqCount = newReqCount
+		go func() { *state.MonthlyRequestCount <- reqCount }()
+
+		gcpRequestMade := false
+		defer func() {
+			go func() {
+				if !gcpRequestMade {
+					reqCount := <-*state.MonthlyRequestCount
+					reqCount--
+					go func() { *state.MonthlyRequestCount <- reqCount }()
+				}
+			}()
+		}()
+
 		provEgress := <-*state.ProvisionalAdditionalEgress
 		cautiousTotalEgress := state.MeasuredEgress + provEgress
 		remainingCautiousTotalEgress := env.MAX_TOTAL_EGRESS - cautiousTotalEgress
@@ -25,7 +48,6 @@ func Object(r *gin.Engine, bucket *storage.BucketHandle, state *intertypes.State
 			return
 		}
 		provEgress += constants.MIN_REQUEST_EGRESS
-		fmt.Printf("Request start, provEgress: %v | measuredEgress: %v\n", provEgress, state.MeasuredEgress)
 		go func() { *state.ProvisionalAdditionalEgress <- provEgress }()
 
 		objectPath := ctx.Param("path")[1:]
@@ -36,6 +58,7 @@ func Object(r *gin.Engine, bucket *storage.BucketHandle, state *intertypes.State
 		if exists {
 			user = <-*userChan
 		} else {
+			fmt.Printf("New user: %v\n", ip)
 			user = &intertypes.User{
 				ResetAt: time.Now().Add(24 * time.Hour).Unix(),
 			}
@@ -54,7 +77,7 @@ func Object(r *gin.Engine, bucket *storage.BucketHandle, state *intertypes.State
 			}()
 		}()
 
-		UserTick(user)
+		UserTick(user, time.Now().Unix())
 		remaining := env.DAILY_EGRESS_PER_USER - user.EgressUsed
 		if remaining < constants.MIN_REQUEST_EGRESS {
 			util.Send429(ctx, user)
@@ -88,14 +111,12 @@ func Object(r *gin.Engine, bucket *storage.BucketHandle, state *intertypes.State
 				provEgress = <-*state.ProvisionalAdditionalEgress
 				provEgress -= reqEgress
 				provEgress += actualReqEgress
-				fmt.Printf("Request finished, provEgress: %v | measuredEgress: %v\n", provEgress, state.MeasuredEgress)
 				go func() { *state.ProvisionalAdditionalEgress <- provEgress }()
 
 				time.Sleep(3 * time.Minute)
 
 				provEgress = <-*state.ProvisionalAdditionalEgress
 				provEgress -= actualReqEgress
-				fmt.Printf("3 minutes after request finished, provEgress: %v | measuredEgress: %v\n", provEgress, state.MeasuredEgress)
 				go func() { *state.ProvisionalAdditionalEgress <- provEgress }()
 			}()
 		}()
@@ -108,13 +129,16 @@ func Object(r *gin.Engine, bucket *storage.BucketHandle, state *intertypes.State
 				Scheme:  storage.SigningSchemeV4,
 			},
 		)
+		gcpRequestMade = true
 		if err != nil {
+			fmt.Println("warning: couldn't create signed URL")
 			util.Send500(ctx)
 			return
 		}
 
 		req, err := http.NewRequestWithContext(ctx.Request.Context(), "GET", objURL, nil)
 		if err != nil { // Invalid request?
+			fmt.Println("warning: request created by server was invalid")
 			util.Send500(ctx)
 			return
 		}
@@ -122,7 +146,10 @@ func Object(r *gin.Engine, bucket *storage.BucketHandle, state *intertypes.State
 
 		res, err := http.DefaultClient.Do(req)
 		if err != nil {
-			util.Send500(ctx)
+			if !errors.Is(err, context.Canceled) {
+				fmt.Println("warning: couldn't fetch signed URL")
+				util.Send500(ctx)
+			}
 			return
 		}
 
@@ -159,7 +186,6 @@ func Object(r *gin.Engine, bucket *storage.BucketHandle, state *intertypes.State
 
 		provEgress -= constants.MIN_REQUEST_EGRESS
 		provEgress += reqEgress
-		fmt.Printf("Got request headers, provEgress: %v | measuredEgress: %v\n", provEgress, state.MeasuredEgress)
 		go func() { *state.ProvisionalAdditionalEgress <- provEgress }()
 
 		newUserEgress := user.EgressUsed + reqEgress
@@ -179,8 +205,8 @@ func Object(r *gin.Engine, bucket *storage.BucketHandle, state *intertypes.State
 }
 
 // Returns true if the user can now be forgotten
-func UserTick(user *intertypes.User) bool {
-	if time.Now().Unix() >= user.ResetAt {
+func UserTick(user *intertypes.User, now int64) bool {
+	if now >= user.ResetAt {
 		user.EgressUsed = 0
 		return true
 	}

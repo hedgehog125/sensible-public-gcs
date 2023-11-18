@@ -30,3 +30,13 @@ func RequireIntEnv(name string) int {
 
 	return value
 }
+func RequireInt64Env(name string) int64 {
+	rawValue := RequireEnv(name)
+
+	value, err := strconv.ParseInt(rawValue, 10, 0)
+	if err != nil {
+		panic(fmt.Sprintf("couldn't parse environment variable \"%v\" into an integer", name))
+	}
+
+	return value
+}

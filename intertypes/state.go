@@ -9,6 +9,7 @@ type State struct {
 	//
 	// Add this value to MeasuredEgress to get a cautiously large figure for the egress
 	ProvisionalAdditionalEgress *chan int64
+	MonthlyRequestCount         *chan int64
 }
 type User struct {
 	EgressUsed int64
