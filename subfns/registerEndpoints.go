@@ -13,4 +13,5 @@ func RegisterEndpoints(
 ) {
 	endpoints.Health(r)
 	endpoints.Object(r, bucket, state, env)
+	endpoints.RemainingEgress(r, state, env)
 }
