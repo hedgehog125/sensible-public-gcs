@@ -32,6 +32,7 @@ func GetEgress(client *monitoring.QueryClient, env *intertypes.Env) (int64, erro
 		if errors.Is(err, iterator.Done) {
 			return 0, nil
 		}
+		return 0, err
 	}
 
 	if len(res.PointData) != 1 || len(res.PointData[0].Values) != 1 {
