@@ -10,3 +10,8 @@ func Health(r *gin.Engine) {
 		ctx.Data(200, "text/plain", []byte(""))
 	})
 }
+func IP(r *gin.Engine) {
+	r.GET("/v1/ip", func(ctx *gin.Context) {
+		ctx.Data(200, "text/plain", []byte(ctx.ClientIP()))
+	})
+}

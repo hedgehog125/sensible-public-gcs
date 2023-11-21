@@ -12,6 +12,8 @@ func RegisterEndpoints(
 	state *intertypes.State, env *intertypes.Env,
 ) {
 	endpoints.Health(r)
+
 	endpoints.Object(r, bucket, state, env)
 	endpoints.RemainingEgress(r, state, env)
+	endpoints.IP(r)
 }
