@@ -11,5 +11,6 @@ type Env struct {
 	MEASURE_TOTAL_EGRESS_FROM_ZERO bool
 	MAX_TOTAL_REQUESTS             int64
 
-	IS_DEV bool
+	IS_DEV  bool
+	IS_TEST bool
 }

@@ -2,6 +2,7 @@ package subfns
 
 import (
 	"fmt"
+	"os"
 	"time"
 
 	monitoring "cloud.google.com/go/monitoring/apiv3/v2"
@@ -28,6 +29,7 @@ func LoadEnvironmentVariables() intertypes.Env {
 	env.MAX_TOTAL_REQUESTS = util.RequireInt64Env("MAX_TOTAL_REQUESTS")
 
 	env.IS_DEV = util.RequireEnv("GIN_MODE") == "debug"
+	env.IS_TEST = os.Getenv("IS_TEST") == "true"
 
 	return env
 }
