@@ -9,9 +9,11 @@ import (
 	"github.com/hedgeghog125/sensible-public-gcs/intertypes"
 )
 
-func CreateServer() *gin.Engine {
+func CreateServer(env *intertypes.Env) *gin.Engine {
 	r := gin.Default()
 	r.SetTrustedProxies(nil)
+	fmt.Printf("gin.PlatformGoogleAppEngine: %v\n", gin.PlatformGoogleAppEngine)
+	r.TrustedPlatform = env.PROXY_ORIGINAL_IP_HEADER_NAME
 
 	return r
 }

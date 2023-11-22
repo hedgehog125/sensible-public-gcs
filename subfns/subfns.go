@@ -20,6 +20,8 @@ func LoadEnvironmentVariables() intertypes.Env {
 
 	env.PORT = util.RequireIntEnv("PORT")
 	env.CORS_ALLOWED_ORIGINS = util.RequireStrArrEnv("CORS_ALLOWED_ORIGINS")
+	env.PROXY_ORIGINAL_IP_HEADER_NAME = util.RequireEnv("PROXY_ORIGINAL_IP_HEADER_NAME")
+
 	env.GCS_BUCKET_NAME = util.RequireEnv("GCS_BUCKET_NAME")
 	env.GCP_PROJECT_NAME = util.RequireEnv("GCP_PROJECT_NAME")
 
@@ -28,6 +30,7 @@ func LoadEnvironmentVariables() intertypes.Env {
 	env.MEASURE_TOTAL_EGRESS_FROM_ZERO = util.RequireEnv("MEASURE_TOTAL_EGRESS_FROM_ZERO") == "true"
 	env.MAX_TOTAL_REQUESTS = util.RequireInt64Env("MAX_TOTAL_REQUESTS")
 
+	env.IS_PROXY_TEST = os.Getenv("IS_PROXY_TEST") == "true"
 	env.IS_DEV = util.RequireEnv("GIN_MODE") == "debug"
 	env.IS_TEST = os.Getenv("IS_TEST") == "true"
 

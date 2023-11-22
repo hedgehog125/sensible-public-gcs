@@ -13,7 +13,11 @@ func RegisterEndpoints(
 ) {
 	endpoints.Health(r)
 
-	endpoints.Object(r, bucket, state, env)
-	endpoints.RemainingEgress(r, state, env)
 	endpoints.IP(r)
+	if env.IS_PROXY_TEST {
+		endpoints.Debug(r)
+	} else {
+		endpoints.Object(r, bucket, state, env)
+		endpoints.RemainingEgress(r, state, env)
+	}
 }

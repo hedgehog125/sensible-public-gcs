@@ -16,7 +16,7 @@ func main() {
 	mClient := subfns.CreateGCPMonitoringClient()
 	subfns.GCPMonitoringTick(mClient, true, &state, &env)
 
-	r := subfns.CreateServer()
+	r := subfns.CreateServer(&env)
 	subfns.AddMiddleware(r, &env)
 	subfns.RegisterEndpoints(r, bucket, &state, &env)
 	subfns.StartTickFns(mClient, &state, &env)
