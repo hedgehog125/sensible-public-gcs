@@ -287,6 +287,7 @@ func correctEgressAfter(
 func UserTick(user *intertypes.User, now int64) bool {
 	if now >= user.ResetAt {
 		user.EgressUsed = 0
+		user.ResetAt = now
 		return true
 	}
 	return false
