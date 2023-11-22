@@ -1,8 +1,12 @@
+TODO.md
+README.md
+LICENSE.md
+
 secret
 .env.*
+.env.local.keys # Just in case
 main
 .DS_Store
-TODO.md
 .git*
 .vscode
 

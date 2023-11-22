@@ -26,7 +26,14 @@ To find the HTTP header with the client's IP, open the JavaScript console on tha
 Expand the object and you should get something like this:
 
 ```json
-TODO
+{
+	"headers": {
+		// ...
+		"X-Envoy-External-Address": "42.42.42.42",
+		"X-Forwarded-For": "42.42.42.42",
+		// Maybe some more x-headers...
+	}
+}
 ```
 
 In this example, the IP address is `42.42.42.42` and so the headers `X-Forwarded-For` and `X-Envoy-External-Address` are the ones to focus on. `X-Forwarded-For` is the most standard but can often be spoofed by clients. To check if a header's safe, modify and run this code to ensure the server is overwriting it:
@@ -45,10 +52,17 @@ In this example, the IP address is `42.42.42.42` and so the headers `X-Forwarded
 If you get something like this, you'll need to try a different header:
 
 ```json
-TODO
+{
+	"headers": {
+		// ...
+		"X-Envoy-External-Address": "42.42.42.42",
+		"X-Forwarded-For": "1.1.1.1,42.42.42.42", // The value sent by the client got merged in
+		// Maybe some more x-headers...
+	}
+}
 ```
 
-Otherwise, if the header you tried wasn't affected by the client's modification, that's the header to use.
+Otherwise, if the header you tried wasn't affected by the client's modification, that's the header to use. Before continuing, make sure you disable the proxy test again by setting the environment variable `IS_PROXY_TEST` back to `false` or by not setting it, as otherwise the server won't work.
 
 ---
 
