@@ -3,8 +3,6 @@
 * Don't stream content of non-ok responses from GCS
 
 # Tests
-* Replace mock sleep function with env properties for timings
-* Time comparisons should use env properties instead of constants
 
 ## Basic Endpoints
  * Health

@@ -34,7 +34,7 @@ func Object(r *gin.Engine, client intertypes.GCPClient, state *intertypes.State,
 		objectPath := ctx.Param("path")[1:]
 		ip := ctx.ClientIP()
 
-		user, userChan := getUser(ip, state)
+		user, userChan := getUser(ip, state, env)
 		// The lock is only released when the response body starts to be sent which isn't super efficient, but good enough for this
 		responseSent := false
 		defer func() {
@@ -154,7 +154,7 @@ func parseContentLength(res *http.Response) (int64, bool) {
 }
 
 // Note: this creates the user if it doesn't exist
-func getUser(ip string, state *intertypes.State) (*intertypes.User, *chan *intertypes.User) {
+func getUser(ip string, state *intertypes.State, env *intertypes.Env) (*intertypes.User, *chan *intertypes.User) {
 	userChan, exists := state.Users[ip]
 	var user *intertypes.User
 	if exists {
@@ -162,9 +162,9 @@ func getUser(ip string, state *intertypes.State) (*intertypes.User, *chan *inter
 	} else {
 		fmt.Printf("New user: %v\n", ip)
 		user = &intertypes.User{
-			ResetAt: time.Now().Add(24 * time.Hour).Unix(),
+			ResetAt: time.Now().Add(env.USER_RESET_TIME).Unix(),
 		}
-		userChan = util.Pointer[chan *intertypes.User](make(chan *intertypes.User))
+		userChan = util.Pointer(make(chan *intertypes.User))
 
 		go func() { *userChan <- user }()
 		state.Users[ip] = userChan
@@ -276,7 +276,7 @@ func correctEgressAfter(
 	provEgress += actualReqEgress
 	go func() { *state.ProvisionalAdditionalEgress <- provEgress }()
 
-	util.Sleep(3*time.Minute, env)
+	time.Sleep(env.GCP_EGRESS_LATENCY)
 
 	provEgress = <-*state.ProvisionalAdditionalEgress
 	provEgress -= actualReqEgress

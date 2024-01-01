@@ -15,7 +15,13 @@ func LoadEnvironmentVariables() *intertypes.Env {
 	_ = godotenv.Load(".env.local")
 	_ = godotenv.Load(".env")
 
-	env := intertypes.Env{}
+	env := intertypes.Env{
+		GCP_EGRESS_LATENCY:     3 * time.Minute,
+		GCP_MONITOR_TICK_DELAY: 1 * time.Minute,
+		GCP_RESET_TICK_DELAY:   -1,
+		USER_TICK_DELAY:        12 * time.Hour,
+		USER_RESET_TIME:        24 * time.Hour,
+	}
 
 	env.PORT = util.RequireIntEnv("PORT")
 	env.CORS_ALLOWED_ORIGINS = util.RequireStrArrEnv("CORS_ALLOWED_ORIGINS")
@@ -49,23 +55,28 @@ func InitState() *intertypes.State {
 func StartTickFns(client intertypes.GCPClient, state *intertypes.State, env *intertypes.Env) {
 	go func() {
 		for {
-			util.Sleep(time.Minute, env)
+			time.Sleep(env.GCP_MONITOR_TICK_DELAY)
 			GCPMonitoringTick(client, false, state, env)
 		}
 	}()
 	go func() {
 		for {
-			util.Sleep(12*time.Hour, env)
+			time.Sleep(env.USER_TICK_DELAY)
 			UsersTick(state)
 		}
 	}()
 	go func() {
 		for {
-			now := time.Now()
-			startOfNextMonth := time.Date(now.Year(), now.Month()+1, 1, 0, 0, 0, 0, time.UTC)
-			secondsUntilNextMonth := startOfNextMonth.Unix() - now.Unix()
+			if env.GCP_RESET_TICK_DELAY == -1 {
+				now := time.Now()
+				startOfNextMonth := time.Date(now.Year(), now.Month()+1, 1, 0, 0, 0, 0, time.UTC)
+				secondsUntilNextMonth := startOfNextMonth.Unix() - now.Unix()
 
-			util.SleepConst(time.Duration(secondsUntilNextMonth) * time.Second)
+				time.Sleep(time.Duration(secondsUntilNextMonth) * time.Second)
+			} else {
+				time.Sleep(env.GCP_RESET_TICK_DELAY)
+			}
+
 			fmt.Printf("monthly total request count before reset: %v\n", <-*state.MonthlyRequestCount)
 			go func() { *state.MonthlyRequestCount <- 0 }()
 		}

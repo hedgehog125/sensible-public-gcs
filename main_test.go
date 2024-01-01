@@ -3,6 +3,7 @@ package main_test
 import (
 	"os"
 	"testing"
+	"time"
 
 	"github.com/hedgeghog125/sensible-public-gcs/intertypes"
 	"github.com/hedgeghog125/sensible-public-gcs/subfns"
@@ -24,6 +25,13 @@ func TestMain(m *testing.M) {
 		IS_PROXY_TEST: false,
 		IS_TEST:       true,
 		IS_DEV:        false,
+
+		// Overwritten constants
+		GCP_EGRESS_LATENCY:     30 * time.Millisecond,
+		GCP_MONITOR_TICK_DELAY: 10 * time.Millisecond,
+		GCP_RESET_TICK_DELAY:   1 * time.Second, // Instead of at the start of the month
+		USER_TICK_DELAY:        250 * time.Millisecond,
+		USER_RESET_TIME:        500 * time.Millisecond,
 	}
 	state := subfns.InitState()
 	client := subfns.CreateMockGCPClient()
