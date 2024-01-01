@@ -5,13 +5,12 @@ import (
 	"os"
 	"time"
 
-	monitoring "cloud.google.com/go/monitoring/apiv3/v2"
 	"github.com/hedgeghog125/sensible-public-gcs/intertypes"
 	"github.com/hedgeghog125/sensible-public-gcs/util"
 	"github.com/joho/godotenv"
 )
 
-func LoadEnvironmentVariables() intertypes.Env {
+func LoadEnvironmentVariables() *intertypes.Env {
 	_ = godotenv.Load(".env.local.keys")
 	_ = godotenv.Load(".env.local")
 	_ = godotenv.Load(".env")
@@ -34,9 +33,9 @@ func LoadEnvironmentVariables() intertypes.Env {
 	env.IS_DEV = util.RequireEnv("GIN_MODE") == "debug"
 	env.IS_TEST = os.Getenv("IS_TEST") == "true"
 
-	return env
+	return &env
 }
-func InitState() intertypes.State {
+func InitState() *intertypes.State {
 	state := intertypes.State{
 		Users:                       make(map[string]*chan *intertypes.User),
 		ProvisionalAdditionalEgress: util.Pointer[chan int64](make(chan int64)),
@@ -45,18 +44,18 @@ func InitState() intertypes.State {
 	go func() { *state.ProvisionalAdditionalEgress <- 0 }()
 	go func() { *state.MonthlyRequestCount <- 0 }()
 
-	return state
+	return &state
 }
-func StartTickFns(mClient *monitoring.QueryClient, state *intertypes.State, env *intertypes.Env) {
+func StartTickFns(client intertypes.GCPClient, state *intertypes.State, env *intertypes.Env) {
 	go func() {
 		for {
-			time.Sleep(time.Minute)
-			GCPMonitoringTick(mClient, false, state, env)
+			util.Sleep(time.Minute, env)
+			GCPMonitoringTick(client, false, state, env)
 		}
 	}()
 	go func() {
 		for {
-			time.Sleep(12 * time.Hour)
+			util.Sleep(12*time.Hour, env)
 			UsersTick(state)
 		}
 	}()
@@ -66,7 +65,7 @@ func StartTickFns(mClient *monitoring.QueryClient, state *intertypes.State, env 
 			startOfNextMonth := time.Date(now.Year(), now.Month()+1, 1, 0, 0, 0, 0, time.UTC)
 			secondsUntilNextMonth := startOfNextMonth.Unix() - now.Unix()
 
-			time.Sleep(time.Duration(secondsUntilNextMonth) * time.Second)
+			util.SleepConst(time.Duration(secondsUntilNextMonth) * time.Second)
 			fmt.Printf("monthly total request count before reset: %v\n", <-*state.MonthlyRequestCount)
 			go func() { *state.MonthlyRequestCount <- 0 }()
 		}

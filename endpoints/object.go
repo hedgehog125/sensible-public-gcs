@@ -16,7 +16,7 @@ import (
 	"github.com/hedgeghog125/sensible-public-gcs/util"
 )
 
-func Object(r *gin.Engine, bucket *storage.BucketHandle, state *intertypes.State, env *intertypes.Env) {
+func Object(r *gin.Engine, client intertypes.GCPClient, state *intertypes.State, env *intertypes.Env) {
 	r.GET("/v1/object/*path", func(ctx *gin.Context) {
 		if capTotalReqCount(ctx, state, env) {
 			return
@@ -53,11 +53,11 @@ func Object(r *gin.Engine, bucket *storage.BucketHandle, state *intertypes.State
 		reqEgress := constants.MIN_REQUEST_EGRESS
 		written := int64(0)
 		defer func() {
-			go correctEgressAfter(responseSent, written, reqEgress, ip, state)
+			go correctEgressAfter(responseSent, written, reqEgress, ip, state, env)
 		}()
 
 		gcpRequestMade = true
-		res, didErr := fetchObject(objectPath, bucket, ctx)
+		res, didErr := fetchObject(objectPath, client, ctx)
 		if didErr {
 			return
 		}
@@ -209,9 +209,9 @@ func secondCapUserEgress(
 // 2nd return value is true if an error occurred
 func fetchObject(
 	objectPath string,
-	bucket *storage.BucketHandle, ctx *gin.Context,
+	client intertypes.GCPClient, ctx *gin.Context,
 ) (*http.Response, bool) {
-	objURL, err := bucket.SignedURL(
+	objURL, err := client.SignedURL(
 		objectPath,
 		&storage.SignedURLOptions{
 			Method:  "GET",
@@ -255,7 +255,7 @@ func copyStatusAndHeaders(res *http.Response, ctx *gin.Context) {
 func correctEgressAfter(
 	responseSent bool, written int64,
 	reqEgress int64, ip string,
-	state *intertypes.State,
+	state *intertypes.State, env *intertypes.Env,
 ) {
 	actualReqEgress := max(written+constants.ASSUMED_OVERHEAD, constants.MIN_REQUEST_EGRESS)
 
@@ -276,7 +276,7 @@ func correctEgressAfter(
 	provEgress += actualReqEgress
 	go func() { *state.ProvisionalAdditionalEgress <- provEgress }()
 
-	time.Sleep(3 * time.Minute)
+	util.Sleep(3*time.Minute, env)
 
 	provEgress = <-*state.ProvisionalAdditionalEgress
 	provEgress -= actualReqEgress

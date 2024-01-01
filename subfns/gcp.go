@@ -2,14 +2,17 @@ package subfns
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
+	"time"
 
 	monitoring "cloud.google.com/go/monitoring/apiv3/v2"
+	"cloud.google.com/go/monitoring/apiv3/v2/monitoringpb"
 	"cloud.google.com/go/storage"
 	"github.com/hedgeghog125/sensible-public-gcs/constants"
 	"github.com/hedgeghog125/sensible-public-gcs/intertypes"
-	"github.com/hedgeghog125/sensible-public-gcs/util"
+	"google.golang.org/api/iterator"
 )
 
 func CreateGCSKeyFile() {
@@ -44,8 +47,58 @@ func CreateGCPMonitoringClient() *monitoring.QueryClient {
 
 	return client
 }
-func GCPMonitoringTick(client *monitoring.QueryClient, isInitialTick bool, state *intertypes.State, env *intertypes.Env) {
-	value, err := util.GetEgress(client, env)
+
+type GCPClient struct {
+	bucket  *storage.BucketHandle
+	mClient *monitoring.QueryClient
+}
+
+// For this billing cycle, doesn't subtract the initial value
+func (client *GCPClient) GetEgress(env *intertypes.Env) (int64, error) {
+	now := time.Now()
+	startOfTheMonth := time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, time.UTC)
+	minutesSinceBillingStart := (now.Unix() - startOfTheMonth.Unix()) / 60
+
+	query := fmt.Sprintf(
+		`fetch gcs_bucket::storage.googleapis.com/network/sent_bytes_count | every %vm | within %vm | group_by [], sum(value.sent_bytes_count)`,
+		minutesSinceBillingStart,
+		minutesSinceBillingStart,
+	)
+	res, err := client.mClient.QueryTimeSeries(context.Background(), &monitoringpb.QueryTimeSeriesRequest{
+		Name:  fmt.Sprintf("projects/%v", env.GCP_PROJECT_NAME),
+		Query: query,
+	}).Next()
+
+	if err != nil {
+		if errors.Is(err, iterator.Done) {
+			return 0, nil
+		}
+		return 0, err
+	}
+
+	if len(res.PointData) != 1 || len(res.PointData[0].Values) != 1 {
+		return 0, errors.New("couldn't get egress because the PointData was an unexpected shape")
+	}
+	value, ok := res.PointData[0].Values[0].Value.(*monitoringpb.TypedValue_Int64Value)
+	if !ok {
+		return 0, errors.New("couldn't get egress because the single data point was the wrong type")
+	}
+
+	return value.Int64Value, nil
+}
+func (client *GCPClient) SignedURL(object string, opts *storage.SignedURLOptions) (string, error) {
+	return client.bucket.SignedURL(object, opts)
+}
+func CreateGCPClient(bucket *storage.BucketHandle, mClient *monitoring.QueryClient) intertypes.GCPClient {
+	client := GCPClient{
+		bucket:  bucket,
+		mClient: mClient,
+	}
+
+	return &client
+}
+func GCPMonitoringTick(client intertypes.GCPClient, isInitialTick bool, state *intertypes.State, env *intertypes.Env) {
+	value, err := client.GetEgress(env)
 	if isInitialTick {
 		fmt.Printf("initial egress: %v\n", value)
 		if err != nil {
