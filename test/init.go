@@ -9,7 +9,7 @@ import (
 	"github.com/hedgeghog125/sensible-public-gcs/subfns"
 )
 
-func InitProgram() (*gin.Engine, *intertypes.State) {
+func InitProgram() (*gin.Engine, *intertypes.State, *intertypes.Env) {
 	os.Setenv("IS_TEST", "true")
 	os.Setenv("GIN_MODE", "release")
 	gin.SetMode(gin.ReleaseMode)
@@ -44,5 +44,5 @@ func InitProgram() (*gin.Engine, *intertypes.State) {
 	subfns.StartTickFns(client, state, &env)
 	go subfns.StartServer(r, &env)
 
-	return r, state
+	return r, state, &env
 }

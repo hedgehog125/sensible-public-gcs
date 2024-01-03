@@ -1,6 +1,9 @@
-* Allow concurrent reads if there are no writes
 * Upgrade Go
 * Don't stream content of non-ok responses from GCS
+
+# Unimportant
+ * Allow concurrent reads if there are no writes
+ * Scan for available ports during tests to allow concurrency
 
 # Tests
 
@@ -10,7 +13,6 @@
 ## Mock Systems
  * Create signed URL
  * Get GCS egress
- * Sleep
 
 ## Sequences
  * 
