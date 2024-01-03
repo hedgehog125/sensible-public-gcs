@@ -5,7 +5,6 @@
 # Tests
 
 ## Basic Endpoints
- * Health
  * IP
 
 ## Mock Systems
