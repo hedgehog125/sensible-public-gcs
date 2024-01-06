@@ -23,13 +23,15 @@ func RemainingEgress(r *gin.Engine, state *intertypes.State, env *intertypes.Env
 	})
 }
 func getUsed(ip string, state *intertypes.State, env *intertypes.Env) int64 {
-	userChan, exists := state.Users[ip]
-	if !exists {
+	user, userChan := getUser(ip, false, state, env)
+	if user == nil {
+		// No lock to release
 		return 0
 	}
 
-	user := <-*userChan
+	defer func() {
+		go func() { *userChan <- user }()
+	}()
 	UserTick(user, time.Now(), env)
-	go func() { *userChan <- user }()
 	return user.EgressUsed
 }

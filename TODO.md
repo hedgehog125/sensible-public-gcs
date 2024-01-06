@@ -1,4 +1,3 @@
-* Don't use Unix time as it uses seconds and the tests need more accuracy
 * Upgrade Go
 * Don't stream content of non-ok responses from GCS
 

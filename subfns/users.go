@@ -23,8 +23,8 @@ func UsersTick(state *intertypes.State, env *intertypes.Env) {
 
 			if endpoints.UserTick(user, now, env) {
 				fmt.Printf("Forgot %v\n", ip)
-				// TODO: mark as deleted, can user be set to nil?
 				delete(state.Users, ip)
+				user = nil // So nil is put back into the channel
 			}
 
 			go func() { *userChan <- user }()

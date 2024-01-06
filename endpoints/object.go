@@ -36,7 +36,7 @@ func Object(r *gin.Engine, client intertypes.GCPClient, state *intertypes.State,
 
 		objectPath := ctx.Param("path")[1:]
 
-		user, userChan := getUser(ip, state, env)
+		user, userChan := getUser(ip, true, state, env)
 		// The lock is only released when the response body starts to be sent which isn't super efficient, but good enough for this
 		responseSent := false
 		defer func() {
@@ -155,20 +155,34 @@ func parseContentLength(res *http.Response) (int64, bool) {
 	return contentLength, false
 }
 
-// Note: this creates the user if it doesn't exist
-func getUser(ip string, state *intertypes.State, env *intertypes.Env) (*intertypes.User, *chan *intertypes.User) {
+// Note: if createIfDoesntExist is false, the returned channel will be nil as opposed to pointing to the nil user
+func getUser(
+	ip string, createIfDoesntExist bool,
+	state *intertypes.State, env *intertypes.Env,
+) (*intertypes.User, *chan *intertypes.User) {
 	userChan, exists := state.Users[ip]
 	var user *intertypes.User
 	if exists {
 		user = <-*userChan
-	} else {
+		// The user could have been deleted from the map while we were getting the lock, in which case it'll have been set to nil
+		if user == nil {
+			// We still need to put it back though in case there's a queue, otherwise those goroutines will hang forever
+			go func() { *userChan <- nil }()
+			exists = false
+		}
+	}
+
+	if !exists {
+		if !createIfDoesntExist {
+			return nil, nil
+		}
 		fmt.Printf("New user: %v\n", ip)
 		user = &intertypes.User{
 			ResetAt: time.Now().Add(env.USER_RESET_TIME),
 		}
 		userChan = util.Pointer(make(chan *intertypes.User))
+		// user will be put into the channel once the calling function is done with it
 
-		go func() { *userChan <- user }()
 		state.Users[ip] = userChan
 	}
 
