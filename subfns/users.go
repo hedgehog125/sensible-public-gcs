@@ -12,7 +12,7 @@ import (
 func UsersTick(state *intertypes.State, env *intertypes.Env) {
 	var wg sync.WaitGroup
 
-	now := time.Now()
+	now := time.Now().UTC()
 	for ip, userChan := range state.Users {
 		wg.Add(1)
 		ip, userChan := ip, userChan

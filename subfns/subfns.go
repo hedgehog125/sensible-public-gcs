@@ -68,7 +68,7 @@ func StartTickFns(client intertypes.GCPClient, state *intertypes.State, env *int
 	go func() {
 		for {
 			if env.GCP_RESET_TICK_DELAY == -1 {
-				now := time.Now()
+				now := time.Now().UTC()
 				startOfNextMonth := time.Date(now.Year(), now.Month()+1, 1, 0, 0, 0, 0, time.UTC)
 				timeUntilNextMonth := startOfNextMonth.Sub(now)
 

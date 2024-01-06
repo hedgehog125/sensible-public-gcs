@@ -15,7 +15,6 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/hedgeghog125/sensible-public-gcs/constants"
 	"github.com/hedgeghog125/sensible-public-gcs/intertypes"
-	"github.com/hedgeghog125/sensible-public-gcs/util"
 	"google.golang.org/api/iterator"
 )
 
@@ -59,7 +58,7 @@ type GCPClient struct {
 
 // For this billing cycle, doesn't subtract the initial value
 func (client *GCPClient) GetEgress(env *intertypes.Env) (int64, error) {
-	now := time.Now()
+	now := time.Now().UTC()
 	startOfTheMonth := time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, time.UTC)
 	minutesSinceBillingStart := int64(math.Ceil(now.Sub(startOfTheMonth).Minutes()))
 
@@ -100,20 +99,18 @@ func (client *GCPClient) FetchObject(
 		objectPath,
 		&storage.SignedURLOptions{
 			Method:  "GET",
-			Expires: time.Now().Add(3 * time.Second),
+			Expires: time.Now().UTC().Add(15 * time.Second),
 			Scheme:  storage.SigningSchemeV4,
 		},
 	)
 	if err != nil {
 		fmt.Println("warning: couldn't create signed URL")
-		util.Send500(ctx)
 		return nil, true
 	}
 
 	req, err := http.NewRequestWithContext(ctx.Request.Context(), "GET", objURL, nil)
 	if err != nil { // Invalid request?
 		fmt.Println("warning: request created by server was invalid")
-		util.Send500(ctx)
 		return nil, true
 	}
 	req.Header.Set("range", ctx.Request.Header.Get("range"))
@@ -122,7 +119,6 @@ func (client *GCPClient) FetchObject(
 	if err != nil {
 		if !errors.Is(err, context.Canceled) {
 			fmt.Println("warning: couldn't fetch signed URL")
-			util.Send500(ctx)
 		}
 		return nil, true
 	}

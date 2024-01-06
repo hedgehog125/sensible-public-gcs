@@ -40,7 +40,7 @@ func TestContinuousRequestsOfMinSize(t *testing.T) {
 		))
 	}
 
-	startTime := time.Now()
+	startTime := time.Now().UTC()
 	var total int64
 	for total = int64(0); total < env.DAILY_EGRESS_PER_USER; {
 		w := test.Fetch("GET", "/v1/object/foo.bar", nil, r, env)

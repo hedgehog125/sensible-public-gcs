@@ -47,7 +47,7 @@ func Object(r *gin.Engine, client intertypes.GCPClient, state *intertypes.State,
 			}()
 		}()
 
-		UserTick(user, time.Now(), env)
+		UserTick(user, time.Now().UTC(), env)
 		if initialCapUserEgress(user, ctx, state, env) {
 			return
 		}
@@ -61,6 +61,23 @@ func Object(r *gin.Engine, client intertypes.GCPClient, state *intertypes.State,
 		gcpRequestMade = true
 		res, didErr := client.FetchObject(objectPath, ctx)
 		if didErr {
+			util.Send500(ctx)
+			return
+		}
+		if res.StatusCode < 200 || res.StatusCode >= 300 {
+			_ = res.Body.Close()
+			if res.StatusCode == 404 {
+				ctx.Status(res.StatusCode)
+			} else {
+				util.Send500(ctx)
+				fmt.Printf("warning: response from GCP had %v status\n", res.StatusCode)
+
+				// If the GCP credentials were invalid, creating the signed URL would have failed instead of this
+				if res.StatusCode == 400 {
+					fmt.Printf("Is this UTC time correct to within 15 seconds?\n%v\n", time.Now().UTC().String())
+				}
+				fmt.Println("")
+			}
 			return
 		}
 		copyStatusAndHeaders(res, ctx)
@@ -178,7 +195,7 @@ func getUser(
 		}
 		fmt.Printf("New user: %v\n", ip)
 		user = &intertypes.User{
-			ResetAt: time.Now().Add(env.USER_RESET_TIME),
+			ResetAt: time.Now().UTC().Add(env.USER_RESET_TIME),
 		}
 		userChan = util.Pointer(make(chan *intertypes.User))
 		// user will be put into the channel once the calling function is done with it
