@@ -2,7 +2,6 @@ package endpoints_test
 
 import (
 	"encoding/json"
-	"fmt"
 	"testing"
 	"time"
 
@@ -27,42 +26,89 @@ func Test404Object(t *testing.T) {
 }
 
 // The objects are all 1 byte so the minimum is used
+//
+// Note: 'Monthly' resets during this test are fine
 func TestContinuousRequestsOfMinSize(t *testing.T) {
+	testContiniousRequests(
+		1, // 1 byte objects
+		true,
+		t,
+	)
+}
+
+// Note: 'Monthly' resets during this test are fine
+func TestContinuousRequestsOfIndivisibleSize(t *testing.T) {
+	const reqSize = 7_500_000 // 7.5MB objects
+	assert.Greater(t, int64(reqSize), constants.MIN_REQUEST_EGRESS)
+
+	testContiniousRequests(
+		reqSize,
+		false,
+		t,
+	)
+}
+func testContiniousRequests(
+	reqSize int, shouldBeDivisible bool,
+	t *testing.T,
+) {
 	r, _, env := test.InitProgram(&test.Config{
-		RandomContentLength: 1, // 1 byte objects
+		RandomContentLength: reqSize,
 	})
 
-	if env.DAILY_EGRESS_PER_USER%constants.MIN_REQUEST_EGRESS != 0 {
-		panic(fmt.Sprintf(
-			"env.DAILY_EGRESS_PER_USER (%v) is not divisible by constants.MIN_REQUEST_EGRESS (%v)",
+	effectiveSize := max(int64(reqSize)+constants.ASSUMED_OVERHEAD, constants.MIN_REQUEST_EGRESS)
+	assert.Greater(t, env.DAILY_EGRESS_PER_USER, effectiveSize) // Not GreaterOrEqual so it needs to be at least 2 requests
+	isDivisible := env.DAILY_EGRESS_PER_USER%effectiveSize == 0
+	if isDivisible != shouldBeDivisible {
+		possibleWord := ""
+		if shouldBeDivisible {
+			possibleWord = " not"
+		}
+
+		t.Fatalf(
+			"env.DAILY_EGRESS_PER_USER (%v) is%v divisible by the effective request size (%v)",
 			env.DAILY_EGRESS_PER_USER,
-			constants.MIN_REQUEST_EGRESS,
-		))
+			possibleWord,
+			effectiveSize,
+		)
 	}
 
-	startTime := time.Now().UTC()
-	var total int64
-	for total = int64(0); total < env.DAILY_EGRESS_PER_USER; {
-		w := test.Fetch("GET", "/v1/object/foo.bar", nil, r, env)
+	runTests := func() time.Duration {
+		startTime := time.Now().UTC()
+		var total int64
+		for total = int64(0); total+effectiveSize <= env.DAILY_EGRESS_PER_USER; {
+			w := test.Fetch("GET", "/v1/object/foo.bar", nil, r, env)
+			assert.Equal(t, 200, w.Code)
+			_ = w.Body.String()
+
+			total += effectiveSize
+		}
+
+		w := test.Fetch("GET", "/v1/remaining/egress", nil, r, env)
 		assert.Equal(t, 200, w.Code)
-		_ = w.Body.String()
+		jsonRes := endpoints.RemainingEgressResponse{}
+		err := json.NewDecoder(w.Body).Decode(&jsonRes)
+		assert.Nil(t, err)
+		assert.Equal(t, env.DAILY_EGRESS_PER_USER-total, jsonRes.Remaining)
+		assert.Equal(t, total, jsonRes.Used)
+		// TODO: check total request count is correct?
 
-		total += constants.MIN_REQUEST_EGRESS
+		if time.Since(startTime) >= env.USER_RESET_TIME-2 {
+			t.Fatal("couldn't reach daily limit before it was reset. is your computer busy?")
+		}
+
+		expect429 := func() {
+			w = test.Fetch("GET", "/v1/object/foo.bar", nil, r, env)
+			assert.Equal(t, 429, w.Code)
+			_ = w.Body.String()
+		}
+		expect429()
+		time.Sleep(5 * time.Millisecond)
+		expect429()
+
+		return time.Since(startTime)
 	}
 
-	w := test.Fetch("GET", "/v1/remaining/egress", nil, r, env)
-	assert.Equal(t, 200, w.Code)
-	jsonRes := endpoints.RemainingEgressResponse{}
-	err := json.NewDecoder(w.Body).Decode(&jsonRes)
-	assert.Nil(t, err)
-	assert.Equal(t, int64(0), jsonRes.Remaining)
-	assert.Equal(t, total, jsonRes.Used)
-
-	if time.Since(startTime) >= env.USER_RESET_TIME-2 {
-		panic("couldn't reach daily limit before it was reset. is your computer busy?")
-	}
-
-	w = test.Fetch("GET", "/v1/object/foo.bar", nil, r, env)
-	assert.Equal(t, 429, w.Code)
-	_ = w.Body.String()
+	elapsedAlready := runTests()
+	time.Sleep((env.USER_RESET_TIME - elapsedAlready) + (2 * time.Millisecond))
+	runTests()
 }

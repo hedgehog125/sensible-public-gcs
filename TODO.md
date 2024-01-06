@@ -1,5 +1,4 @@
 * Upgrade Go
-* Don't stream content of non-ok responses from GCS
 
 # Unimportant
  * Allow concurrent reads if there are no writes

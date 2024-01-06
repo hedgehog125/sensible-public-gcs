@@ -31,10 +31,10 @@ func InitProgram(config *Config) (*gin.Engine, *intertypes.State, *intertypes.En
 		CORS_ALLOWED_ORIGINS:          []string{"*"},
 		PROXY_ORIGINAL_IP_HEADER_NAME: "",
 
-		DAILY_EGRESS_PER_USER:          5_000_000,
-		MAX_TOTAL_EGRESS:               15000000000,
+		DAILY_EGRESS_PER_USER:          15_000_000, // 15MB
+		MAX_TOTAL_EGRESS:               15_000_000_000,
 		MEASURE_TOTAL_EGRESS_FROM_ZERO: true,
-		MAX_TOTAL_REQUESTS:             50000,
+		MAX_TOTAL_REQUESTS:             50_000,
 
 		IS_PROXY_TEST: false,
 		IS_TEST:       true,
@@ -43,7 +43,7 @@ func InitProgram(config *Config) (*gin.Engine, *intertypes.State, *intertypes.En
 		// Overwritten constants
 		GCP_EGRESS_LATENCY:     30 * time.Millisecond,
 		GCP_MONITOR_TICK_DELAY: 10 * time.Millisecond,
-		GCP_RESET_TICK_DELAY:   1 * time.Second, // Instead of at the start of the month
+		GCP_RESET_TICK_DELAY:   3 * time.Second, // Instead of at the start of the month
 		USER_TICK_DELAY:        250 * time.Millisecond,
 		USER_RESET_TIME:        500 * time.Millisecond,
 	}

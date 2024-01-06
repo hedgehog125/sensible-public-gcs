@@ -74,6 +74,7 @@ func StartTickFns(client intertypes.GCPClient, state *intertypes.State, env *int
 
 				time.Sleep(timeUntilNextMonth)
 			} else {
+				fmt.Printf("sleeping for %vms\n", env.GCP_RESET_TICK_DELAY.Milliseconds())
 				time.Sleep(env.GCP_RESET_TICK_DELAY)
 			}
 

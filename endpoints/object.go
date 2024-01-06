@@ -258,9 +258,11 @@ func correctEgressAfter(
 		userChan, exists := state.Users[ip]
 		if exists {
 			user := <-*userChan
-			// Unlike the total, MIN_REQUEST_EGRESS is never added to the user egress so it doesn't need refunding
-			user.EgressUsed -= reqEgress
-			user.EgressUsed += actualReqEgress
+			if user != nil {
+				// Unlike the total, MIN_REQUEST_EGRESS is never added to the user egress so it doesn't need refunding
+				user.EgressUsed -= reqEgress
+				user.EgressUsed += actualReqEgress
+			}
 			go func() { *userChan <- user }()
 		}
 	}
