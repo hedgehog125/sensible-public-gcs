@@ -1,6 +1,7 @@
 package util
 
 import (
+	"math"
 	"net/http"
 	"strconv"
 	"time"
@@ -16,7 +17,8 @@ func Send503(ctx *gin.Context) {
 	ctx.Data(503, "text/plain", []byte(""))
 }
 func Send429(ctx *gin.Context, user *intertypes.User) {
-	secondsUntilReset := user.ResetAt - time.Now().Unix()
+	timeUntilReset := time.Until(user.ResetAt)
+	secondsUntilReset := int64(math.Ceil(timeUntilReset.Seconds()))
 	ctx.Header("retry-after", strconv.FormatInt(secondsUntilReset, 10))
 	ctx.Data(http.StatusTooManyRequests, "text/plain", []byte(""))
 }

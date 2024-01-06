@@ -9,7 +9,19 @@ import (
 	"github.com/hedgeghog125/sensible-public-gcs/subfns"
 )
 
-func InitProgram() (*gin.Engine, *intertypes.State, *intertypes.Env) {
+type Config struct {
+	RandomContentLength int
+	DisableProxy        bool
+}
+
+func InitProgram(config *Config) (*gin.Engine, *intertypes.State, *intertypes.Env) {
+	if config == nil {
+		config = &Config{}
+	}
+	if config.RandomContentLength == -1 {
+		config.RandomContentLength = DEFAULT_RANDOM_CONTENT_LENGTH
+	}
+
 	os.Setenv("IS_TEST", "true")
 	os.Setenv("GIN_MODE", "release")
 	gin.SetMode(gin.ReleaseMode)
@@ -19,7 +31,7 @@ func InitProgram() (*gin.Engine, *intertypes.State, *intertypes.Env) {
 		CORS_ALLOWED_ORIGINS:          []string{"*"},
 		PROXY_ORIGINAL_IP_HEADER_NAME: "",
 
-		DAILY_EGRESS_PER_USER:          500000000,
+		DAILY_EGRESS_PER_USER:          5_000_000,
 		MAX_TOTAL_EGRESS:               15000000000,
 		MEASURE_TOTAL_EGRESS_FROM_ZERO: true,
 		MAX_TOTAL_REQUESTS:             50000,
@@ -35,8 +47,11 @@ func InitProgram() (*gin.Engine, *intertypes.State, *intertypes.Env) {
 		USER_TICK_DELAY:        250 * time.Millisecond,
 		USER_RESET_TIME:        500 * time.Millisecond,
 	}
+	if !config.DisableProxy {
+		env.PROXY_ORIGINAL_IP_HEADER_NAME = PROXY_ORIGINAL_IP_HEADER_NAME
+	}
 	state := subfns.InitState()
-	client := subfns.CreateMockGCPClient()
+	client := subfns.NewMockGCPClient(config.RandomContentLength)
 
 	r := subfns.CreateServer(&env)
 	subfns.AddMiddleware(r, &env)

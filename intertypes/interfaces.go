@@ -1,10 +1,12 @@
 package intertypes
 
 import (
-	"cloud.google.com/go/storage"
+	"net/http"
+
+	"github.com/gin-gonic/gin"
 )
 
 type GCPClient interface {
-	SignedURL(object string, opts *storage.SignedURLOptions) (string, error)
+	FetchObject(objectPath string, ctx *gin.Context) (*http.Response, bool)
 	GetEgress(env *Env) (int64, error)
 }

@@ -1,15 +1,12 @@
 package endpoints
 
 import (
-	"context"
-	"errors"
 	"fmt"
 	"io"
 	"net/http"
 	"strconv"
 	"time"
 
-	"cloud.google.com/go/storage"
 	"github.com/gin-gonic/gin"
 	"github.com/hedgeghog125/sensible-public-gcs/constants"
 	"github.com/hedgeghog125/sensible-public-gcs/intertypes"
@@ -18,6 +15,12 @@ import (
 
 func Object(r *gin.Engine, client intertypes.GCPClient, state *intertypes.State, env *intertypes.Env) {
 	r.GET("/v1/object/*path", func(ctx *gin.Context) {
+		ip := ctx.ClientIP()
+		if ip == "" {
+			ctx.Data(http.StatusUnauthorized, "text/plain", []byte("Couldn't find IP address"))
+			return
+		}
+
 		if capTotalReqCount(ctx, state, env) {
 			return
 		}
@@ -32,7 +35,6 @@ func Object(r *gin.Engine, client intertypes.GCPClient, state *intertypes.State,
 		}
 
 		objectPath := ctx.Param("path")[1:]
-		ip := ctx.ClientIP()
 
 		user, userChan := getUser(ip, state, env)
 		// The lock is only released when the response body starts to be sent which isn't super efficient, but good enough for this
@@ -45,7 +47,7 @@ func Object(r *gin.Engine, client intertypes.GCPClient, state *intertypes.State,
 			}()
 		}()
 
-		UserTick(user, time.Now().Unix())
+		UserTick(user, time.Now(), env)
 		if initialCapUserEgress(user, ctx, state, env) {
 			return
 		}
@@ -57,7 +59,7 @@ func Object(r *gin.Engine, client intertypes.GCPClient, state *intertypes.State,
 		}()
 
 		gcpRequestMade = true
-		res, didErr := fetchObject(objectPath, client, ctx)
+		res, didErr := client.FetchObject(objectPath, ctx)
 		if didErr {
 			return
 		}
@@ -98,7 +100,7 @@ func capTotalReqCount(ctx *gin.Context, state *intertypes.State, env *intertypes
 	newReqCount := reqCount + 1
 	if newReqCount >= env.MAX_TOTAL_REQUESTS {
 		go func() { *state.MonthlyRequestCount <- reqCount }()
-		util.Send503(ctx)
+		util.Send503(ctx) // TODO: move to outer function
 		return true
 	}
 	reqCount = newReqCount
@@ -128,7 +130,7 @@ func capTotalEgress(
 	// Minus formerProvReqEgress because the total egress was temporarily increased by that earlier
 	if remainingCautiousTotalEgress < reqEgress-formerProvReqEgress {
 		go func() { *state.ProvisionalAdditionalEgress <- provEgress }()
-		util.Send503(ctx)
+		util.Send503(ctx) // TODO: move to outer function
 		return true
 	}
 	provEgress -= formerProvReqEgress
@@ -162,7 +164,7 @@ func getUser(ip string, state *intertypes.State, env *intertypes.Env) (*intertyp
 	} else {
 		fmt.Printf("New user: %v\n", ip)
 		user = &intertypes.User{
-			ResetAt: time.Now().Add(env.USER_RESET_TIME).Unix(),
+			ResetAt: time.Now().Add(env.USER_RESET_TIME),
 		}
 		userChan = util.Pointer(make(chan *intertypes.User))
 
@@ -198,7 +200,7 @@ func initialCapUserEgress(
 func secondCapUserEgress(
 	reqEgress int64, user *intertypes.User,
 	ctx *gin.Context, env *intertypes.Env,
-) bool {
+) bool { // TODO: does this need to be a separate function?
 	if user.EgressUsed+reqEgress > env.DAILY_EGRESS_PER_USER {
 		util.Send429(ctx, user)
 		return true
@@ -206,44 +208,6 @@ func secondCapUserEgress(
 	return false
 }
 
-// 2nd return value is true if an error occurred
-func fetchObject(
-	objectPath string,
-	client intertypes.GCPClient, ctx *gin.Context,
-) (*http.Response, bool) {
-	objURL, err := client.SignedURL(
-		objectPath,
-		&storage.SignedURLOptions{
-			Method:  "GET",
-			Expires: time.Now().Add(3 * time.Second),
-			Scheme:  storage.SigningSchemeV4,
-		},
-	)
-	if err != nil {
-		fmt.Println("warning: couldn't create signed URL")
-		util.Send500(ctx)
-		return nil, true
-	}
-
-	req, err := http.NewRequestWithContext(ctx.Request.Context(), "GET", objURL, nil)
-	if err != nil { // Invalid request?
-		fmt.Println("warning: request created by server was invalid")
-		util.Send500(ctx)
-		return nil, true
-	}
-	req.Header.Set("range", ctx.Request.Header.Get("range"))
-
-	res, err := http.DefaultClient.Do(req)
-	if err != nil {
-		if !errors.Is(err, context.Canceled) {
-			fmt.Println("warning: couldn't fetch signed URL")
-			util.Send500(ctx)
-		}
-		return nil, true
-	}
-
-	return res, false
-}
 func copyStatusAndHeaders(res *http.Response, ctx *gin.Context) {
 	for _, headerName := range constants.PROXIED_HEADERS {
 		ctx.Header(headerName, res.Header.Get(headerName))
@@ -284,10 +248,10 @@ func correctEgressAfter(
 }
 
 // Returns true if the user can now be forgotten
-func UserTick(user *intertypes.User, now int64) bool {
-	if now >= user.ResetAt {
+func UserTick(user *intertypes.User, now time.Time, env *intertypes.Env) bool {
+	if now.After(user.ResetAt) {
 		user.EgressUsed = 0
-		user.ResetAt = now
+		user.ResetAt = now.Add(env.USER_RESET_TIME)
 	}
 	return user.EgressUsed == 0
 }

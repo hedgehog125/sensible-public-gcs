@@ -4,14 +4,18 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math"
+	"net/http"
 	"os"
 	"time"
 
 	monitoring "cloud.google.com/go/monitoring/apiv3/v2"
 	"cloud.google.com/go/monitoring/apiv3/v2/monitoringpb"
 	"cloud.google.com/go/storage"
+	"github.com/gin-gonic/gin"
 	"github.com/hedgeghog125/sensible-public-gcs/constants"
 	"github.com/hedgeghog125/sensible-public-gcs/intertypes"
+	"github.com/hedgeghog125/sensible-public-gcs/util"
 	"google.golang.org/api/iterator"
 )
 
@@ -57,7 +61,7 @@ type GCPClient struct {
 func (client *GCPClient) GetEgress(env *intertypes.Env) (int64, error) {
 	now := time.Now()
 	startOfTheMonth := time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, time.UTC)
-	minutesSinceBillingStart := (now.Unix() - startOfTheMonth.Unix()) / 60
+	minutesSinceBillingStart := int64(math.Ceil(now.Sub(startOfTheMonth).Minutes()))
 
 	query := fmt.Sprintf(
 		`fetch gcs_bucket::storage.googleapis.com/network/sent_bytes_count | every %vm | within %vm | group_by [], sum(value.sent_bytes_count)`,
@@ -86,8 +90,44 @@ func (client *GCPClient) GetEgress(env *intertypes.Env) (int64, error) {
 
 	return value.Int64Value, nil
 }
-func (client *GCPClient) SignedURL(object string, opts *storage.SignedURLOptions) (string, error) {
-	return client.bucket.SignedURL(object, opts)
+
+// 2nd return value is true if an error occurred
+func (client *GCPClient) FetchObject(
+	objectPath string,
+	ctx *gin.Context,
+) (*http.Response, bool) {
+	objURL, err := client.bucket.SignedURL(
+		objectPath,
+		&storage.SignedURLOptions{
+			Method:  "GET",
+			Expires: time.Now().Add(3 * time.Second),
+			Scheme:  storage.SigningSchemeV4,
+		},
+	)
+	if err != nil {
+		fmt.Println("warning: couldn't create signed URL")
+		util.Send500(ctx)
+		return nil, true
+	}
+
+	req, err := http.NewRequestWithContext(ctx.Request.Context(), "GET", objURL, nil)
+	if err != nil { // Invalid request?
+		fmt.Println("warning: request created by server was invalid")
+		util.Send500(ctx)
+		return nil, true
+	}
+	req.Header.Set("range", ctx.Request.Header.Get("range"))
+
+	res, err := http.DefaultClient.Do(req)
+	if err != nil {
+		if !errors.Is(err, context.Canceled) {
+			fmt.Println("warning: couldn't fetch signed URL")
+			util.Send500(ctx)
+		}
+		return nil, true
+	}
+
+	return res, false
 }
 func CreateGCPClient(bucket *storage.BucketHandle, mClient *monitoring.QueryClient) intertypes.GCPClient {
 	client := GCPClient{

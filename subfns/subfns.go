@@ -62,7 +62,7 @@ func StartTickFns(client intertypes.GCPClient, state *intertypes.State, env *int
 	go func() {
 		for {
 			time.Sleep(env.USER_TICK_DELAY)
-			UsersTick(state)
+			UsersTick(state, env)
 		}
 	}()
 	go func() {
@@ -70,9 +70,9 @@ func StartTickFns(client intertypes.GCPClient, state *intertypes.State, env *int
 			if env.GCP_RESET_TICK_DELAY == -1 {
 				now := time.Now()
 				startOfNextMonth := time.Date(now.Year(), now.Month()+1, 1, 0, 0, 0, 0, time.UTC)
-				secondsUntilNextMonth := startOfNextMonth.Unix() - now.Unix()
+				timeUntilNextMonth := startOfNextMonth.Sub(now)
 
-				time.Sleep(time.Duration(secondsUntilNextMonth) * time.Second)
+				time.Sleep(timeUntilNextMonth)
 			} else {
 				time.Sleep(env.GCP_RESET_TICK_DELAY)
 			}

@@ -1,5 +1,7 @@
 package intertypes
 
+import "time"
+
 type State struct {
 	Users map[string]*chan *User
 	// If env.MEASURE_TOTAL_EGRESS_FROM_ZERO is false, this will be 0
@@ -14,5 +16,5 @@ type State struct {
 type User struct {
 	EgressUsed int64
 	// A Unix epoch
-	ResetAt int64
+	ResetAt time.Time
 }

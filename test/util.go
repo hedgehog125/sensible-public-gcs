@@ -7,10 +7,14 @@ import (
 	"net/http/httptest"
 
 	"github.com/gin-gonic/gin"
+	"github.com/hedgeghog125/sensible-public-gcs/intertypes"
 )
 
-func Fetch(method string, url string, body io.Reader, r *gin.Engine) *httptest.ResponseRecorder {
-	req := NewRequest(method, url, body)
+func Fetch(
+	method string, url string, body io.Reader,
+	r *gin.Engine, env *intertypes.Env,
+) *httptest.ResponseRecorder {
+	req := NewRequest(method, url, body, env)
 	return FetchUsingRequest(req, r)
 }
 func FetchUsingRequest(req *http.Request, r *gin.Engine) *httptest.ResponseRecorder {
@@ -20,10 +24,13 @@ func FetchUsingRequest(req *http.Request, r *gin.Engine) *httptest.ResponseRecor
 }
 
 // Use for constant requests. Panics instead of returning an error
-func NewRequest(method string, url string, body io.Reader) *http.Request {
+func NewRequest(method string, url string, body io.Reader, env *intertypes.Env) *http.Request {
 	req, err := http.NewRequest(method, url, body)
 	if err != nil {
 		panic(fmt.Sprintf("couldn't create HTTP request for test. error:\n%v", err.Error()))
+	}
+	if env.PROXY_ORIGINAL_IP_HEADER_NAME != "" {
+		req.Header.Set(env.PROXY_ORIGINAL_IP_HEADER_NAME, TEST_IP)
 	}
 
 	return req
