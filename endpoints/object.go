@@ -96,12 +96,18 @@ func Object(r *gin.Engine, client intertypes.GCPClient, state *intertypes.State,
 			return
 		}
 
-		if secondCapUserEgress(reqEgress, user, ctx, env) {
-			_ = res.Body.Close()
-			return
-		}
+		{
+			newEgressUsed := user.EgressUsed + reqEgress
+			if newEgressUsed > env.DAILY_EGRESS_PER_USER {
+				user.EgressUsed += constants.MIN_REQUEST_EGRESS
 
-		user.EgressUsed += reqEgress
+				util.Send429(ctx, user)
+				_ = res.Body.Close()
+				return
+			}
+
+			user.EgressUsed = newEgressUsed
+		}
 		go func() { *userChan <- user }()
 		responseSent = true
 
@@ -222,18 +228,6 @@ func initialCapUserEgress(
 			provEgress -= constants.MIN_REQUEST_EGRESS
 			go func() { *state.ProvisionalAdditionalEgress <- provEgress }()
 		}()
-		return true
-	}
-	return false
-}
-
-// Returns true if it's sent a 429
-func secondCapUserEgress(
-	reqEgress int64, user *intertypes.User,
-	ctx *gin.Context, env *intertypes.Env,
-) bool { // TODO: does this need to be a separate function?
-	if user.EgressUsed+reqEgress > env.DAILY_EGRESS_PER_USER {
-		util.Send429(ctx, user)
 		return true
 	}
 	return false
