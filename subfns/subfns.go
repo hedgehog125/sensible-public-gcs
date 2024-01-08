@@ -54,15 +54,21 @@ func InitState() *intertypes.State {
 }
 func StartTickFns(client intertypes.GCPClient, state *intertypes.State, env *intertypes.Env) {
 	go func() {
+		elapsed := time.Duration(0)
 		for {
-			time.Sleep(env.GCP_MONITOR_TICK_DELAY)
+			time.Sleep(env.GCP_MONITOR_TICK_DELAY - elapsed)
+			startTime := time.Now().UTC()
 			GCPMonitoringTick(client, false, state, env)
+			elapsed = time.Since(startTime)
 		}
 	}()
 	go func() {
+		elapsed := time.Duration(0)
 		for {
-			time.Sleep(env.USER_TICK_DELAY)
+			time.Sleep(env.USER_TICK_DELAY - elapsed)
+			startTime := time.Now().UTC()
 			UsersTick(state, env)
+			elapsed = time.Since(startTime)
 		}
 	}()
 	go func() {
@@ -74,12 +80,14 @@ func StartTickFns(client intertypes.GCPClient, state *intertypes.State, env *int
 
 				time.Sleep(timeUntilNextMonth)
 			} else {
-				fmt.Printf("sleeping for %vms\n", env.GCP_RESET_TICK_DELAY.Milliseconds())
 				time.Sleep(env.GCP_RESET_TICK_DELAY)
 			}
 
-			fmt.Printf("monthly total request count before reset: %v\n", <-*state.MonthlyRequestCount)
-			go func() { *state.MonthlyRequestCount <- 0 }()
+			go func() {
+				// I think consuming the channel first is necessary?
+				fmt.Printf("monthly total request count before reset: %v\n", <-*state.MonthlyRequestCount)
+				*state.MonthlyRequestCount <- 0
+			}()
 		}
 	}()
 }

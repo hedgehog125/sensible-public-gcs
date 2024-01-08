@@ -1,4 +1,5 @@
 * Upgrade Go
+* Use chan x instead of *chan x?
 
 # Unimportant
  * Allow concurrent reads if there are no writes

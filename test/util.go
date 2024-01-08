@@ -35,3 +35,14 @@ func NewRequest(method string, url string, body io.Reader, env *intertypes.Env) 
 
 	return req
 }
+
+// This is in the test package as opposed to util as you almost always want to lock the channel for a moment when reading it. But in tests, you usually just want to check a value.
+func ReadChannel[T any](c *chan T) T {
+	value := <-*c
+	defer func() {
+		go func() {
+			*c <- value
+		}()
+	}()
+	return value
+}

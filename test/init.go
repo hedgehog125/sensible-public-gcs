@@ -43,15 +43,15 @@ func InitProgram(config *Config) (*gin.Engine, *intertypes.State, *intertypes.En
 		// Overwritten constants
 		GCP_EGRESS_LATENCY:     30 * time.Millisecond,
 		GCP_MONITOR_TICK_DELAY: 10 * time.Millisecond,
-		GCP_RESET_TICK_DELAY:   3 * time.Second, // Instead of at the start of the month
-		USER_TICK_DELAY:        250 * time.Millisecond,
+		GCP_RESET_TICK_DELAY:   3 * time.Second,        // Instead of at the start of the month
+		USER_TICK_DELAY:        750 * time.Millisecond, // 250ms would keep the original proportion with USER_RESET_TIME, but having the user around longer is useful
 		USER_RESET_TIME:        500 * time.Millisecond,
 	}
 	if !config.DisableProxy {
 		env.PROXY_ORIGINAL_IP_HEADER_NAME = PROXY_ORIGINAL_IP_HEADER_NAME
 	}
 	state := subfns.InitState()
-	client := subfns.NewMockGCPClient(config.RandomContentLength)
+	client := subfns.NewMockGCPClient(config.RandomContentLength, &env)
 
 	r := subfns.CreateServer(&env)
 	subfns.AddMiddleware(r, &env)
