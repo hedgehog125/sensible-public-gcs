@@ -144,12 +144,12 @@ func GCPMonitoringTick(client intertypes.GCPClient, isInitialTick bool, state *i
 		if env.MEASURE_TOTAL_EGRESS_FROM_ZERO { // Otherwise leave it at 0
 			state.InitialMeasuredEgress = value
 		}
-		state.MeasuredEgress = value - state.InitialMeasuredEgress
+		state.MeasuredEgress.SimpleWrite(value - state.InitialMeasuredEgress)
 		return
 	}
 
 	if err != nil {
 		return
 	}
-	state.MeasuredEgress = value - state.InitialMeasuredEgress
+	state.MeasuredEgress.SimpleWrite(value - state.InitialMeasuredEgress)
 }

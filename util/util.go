@@ -13,9 +13,9 @@ func RandomString(length int) string {
 
 	return string(randomString)
 }
-func ReadAndResendChannel[T any](channel *chan T) T {
-	value := <-*channel
-	go func() { *channel <- value }()
+func ReadAndResendChannel[T any](channel chan T) T {
+	value := <-channel
+	go func() { channel <- value }()
 	return value
 }
 func Pointer[T any](value T) *T {

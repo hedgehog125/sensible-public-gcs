@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/hedgeghog125/sensible-public-gcs/constants"
 	"github.com/hedgeghog125/sensible-public-gcs/intertypes"
 	"github.com/hedgeghog125/sensible-public-gcs/subfns"
 )
@@ -12,6 +13,7 @@ import (
 type Config struct {
 	RandomContentLength int
 	DisableProxy        bool
+	DisableRequestLog   bool
 }
 
 func InitProgram(config *Config) (*gin.Engine, *intertypes.State, *intertypes.Env) {
@@ -32,15 +34,16 @@ func InitProgram(config *Config) (*gin.Engine, *intertypes.State, *intertypes.En
 		PROXY_ORIGINAL_IP_HEADER_NAME: "",
 
 		DAILY_EGRESS_PER_USER:          15_000_000, // 15MB
-		MAX_TOTAL_EGRESS:               15_000_000_000,
+		MAX_TOTAL_EGRESS:               1000 * max(int64(config.RandomContentLength), constants.MIN_REQUEST_EGRESS),
 		MEASURE_TOTAL_EGRESS_FROM_ZERO: true,
-		MAX_TOTAL_REQUESTS:             50_000,
+		MAX_TOTAL_REQUESTS:             500_000,
 
 		IS_PROXY_TEST: false,
 		IS_TEST:       true,
 		IS_DEV:        false,
 
 		// Overwritten constants
+		DISABLE_REQUEST_LOGS:   config.DisableRequestLog,
 		GCP_EGRESS_LATENCY:     30 * time.Millisecond,
 		GCP_MONITOR_TICK_DELAY: 10 * time.Millisecond,
 		GCP_RESET_TICK_DELAY:   3 * time.Second,        // Instead of at the start of the month

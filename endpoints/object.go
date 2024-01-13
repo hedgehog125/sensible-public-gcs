@@ -42,7 +42,7 @@ func Object(r *gin.Engine, client intertypes.GCPClient, state *intertypes.State,
 		defer func() {
 			go func() {
 				if !responseSent { // If a response has been sent, the user will already have been unlocked
-					go func() { *userChan <- user }()
+					go func() { userChan <- user }()
 				}
 			}()
 		}()
@@ -108,7 +108,7 @@ func Object(r *gin.Engine, client intertypes.GCPClient, state *intertypes.State,
 
 			user.EgressUsed = newEgressUsed
 		}
-		go func() { *userChan <- user }()
+		go func() { userChan <- user }()
 		responseSent = true
 
 		written, _ = io.Copy(ctx.Writer, res.Body)
@@ -119,23 +119,23 @@ func Object(r *gin.Engine, client intertypes.GCPClient, state *intertypes.State,
 // Returns true if it's sent a 503
 // Also increases state.MonthlyRequestCount
 func capTotalReqCount(ctx *gin.Context, state *intertypes.State, env *intertypes.Env) bool {
-	reqCount := <-*state.MonthlyRequestCount
+	reqCount := <-state.MonthlyRequestCount
 	newReqCount := reqCount + 1
 	if newReqCount >= env.MAX_TOTAL_REQUESTS {
-		go func() { *state.MonthlyRequestCount <- reqCount }()
+		go func() { state.MonthlyRequestCount <- reqCount }()
 		util.Send503(ctx) // TODO: move to outer function
 		return true
 	}
 	reqCount = newReqCount
-	go func() { *state.MonthlyRequestCount <- reqCount }()
+	go func() { state.MonthlyRequestCount <- reqCount }()
 
 	return false
 }
 func undoTotalReqCountIfNotSent(gcpRequestMade bool, state *intertypes.State) {
 	if !gcpRequestMade {
-		reqCount := <-*state.MonthlyRequestCount
+		reqCount := <-state.MonthlyRequestCount
 		reqCount--
-		go func() { *state.MonthlyRequestCount <- reqCount }()
+		go func() { state.MonthlyRequestCount <- reqCount }()
 	}
 }
 
@@ -146,19 +146,19 @@ func capTotalEgress(
 	reqEgress int64, formerProvReqEgress int64,
 	ctx *gin.Context, state *intertypes.State, env *intertypes.Env,
 ) bool {
-	provEgress := <-*state.ProvisionalAdditionalEgress
-	cautiousTotalEgress := state.MeasuredEgress + provEgress
+	provEgress := <-state.ProvisionalAdditionalEgress
+	cautiousTotalEgress := state.MeasuredEgress.SimpleRead() + provEgress
 	remainingCautiousTotalEgress := env.MAX_TOTAL_EGRESS - cautiousTotalEgress
 
 	// Minus formerProvReqEgress because the total egress was temporarily increased by that earlier
 	if remainingCautiousTotalEgress < reqEgress-formerProvReqEgress {
-		go func() { *state.ProvisionalAdditionalEgress <- provEgress }()
+		go func() { state.ProvisionalAdditionalEgress <- provEgress }()
 		util.Send503(ctx) // TODO: move to outer function
 		return true
 	}
 	provEgress -= formerProvReqEgress
 	provEgress += reqEgress
-	go func() { *state.ProvisionalAdditionalEgress <- provEgress }()
+	go func() { state.ProvisionalAdditionalEgress <- provEgress }()
 
 	return false
 }
@@ -182,15 +182,15 @@ func parseContentLength(res *http.Response) (int64, bool) {
 func getUser(
 	ip string, createIfDoesntExist bool,
 	state *intertypes.State, env *intertypes.Env,
-) (*intertypes.User, *chan *intertypes.User) {
-	userChan, exists := state.Users[ip]
+) (*intertypes.User, chan *intertypes.User) {
+	userChan, exists := state.Users.Load(ip)
 	var user *intertypes.User
 	if exists {
-		user = <-*userChan
+		user = <-userChan
 		// The user could have been deleted from the map while we were getting the lock, in which case it'll have been set to nil
 		if user == nil {
 			// We still need to put it back though in case there's a queue, otherwise those goroutines will hang forever
-			go func() { *userChan <- nil }()
+			go func() { userChan <- nil }()
 			exists = false
 		}
 	}
@@ -199,14 +199,16 @@ func getUser(
 		if !createIfDoesntExist {
 			return nil, nil
 		}
-		fmt.Printf("New user: %v\n", ip)
+		if !env.DISABLE_REQUEST_LOGS {
+			fmt.Printf("new user: %v\n", ip)
+		}
 		user = &intertypes.User{
 			ResetAt: time.Now().UTC().Add(env.USER_RESET_TIME),
 		}
-		userChan = util.Pointer(make(chan *intertypes.User))
+		userChan = make(chan *intertypes.User)
 		// user will be put into the channel once the calling function is done with it
 
-		state.Users[ip] = userChan
+		state.Users.Store(ip, userChan)
 	}
 
 	return user, userChan
@@ -224,9 +226,9 @@ func initialCapUserEgress(
 		util.Send429(ctx, user)
 		// Refund the total egress now rather than waiting for the 3 minutes
 		go func() {
-			provEgress := <-*state.ProvisionalAdditionalEgress
+			provEgress := <-state.ProvisionalAdditionalEgress
 			provEgress -= constants.MIN_REQUEST_EGRESS
-			go func() { *state.ProvisionalAdditionalEgress <- provEgress }()
+			go func() { state.ProvisionalAdditionalEgress <- provEgress }()
 		}()
 		return true
 	}
@@ -249,29 +251,29 @@ func correctEgressAfter(
 	actualReqEgress := max(written+constants.ASSUMED_OVERHEAD, constants.MIN_REQUEST_EGRESS)
 
 	if responseSent {
-		userChan, exists := state.Users[ip]
+		userChan, exists := state.Users.Load(ip)
 		if exists {
-			user := <-*userChan
+			user := <-userChan
 			if user != nil {
 				// Unlike the total, MIN_REQUEST_EGRESS is never added to the user egress so it doesn't need refunding
 				user.EgressUsed -= reqEgress
 				user.EgressUsed += actualReqEgress
 			}
-			go func() { *userChan <- user }()
+			go func() { userChan <- user }()
 		}
 	}
 
 	// Update provisional egress
-	provEgress := <-*state.ProvisionalAdditionalEgress
+	provEgress := <-state.ProvisionalAdditionalEgress
 	provEgress -= reqEgress
 	provEgress += actualReqEgress
-	go func() { *state.ProvisionalAdditionalEgress <- provEgress }()
+	go func() { state.ProvisionalAdditionalEgress <- provEgress }()
 
 	time.Sleep(env.GCP_EGRESS_LATENCY)
 
-	provEgress = <-*state.ProvisionalAdditionalEgress
+	provEgress = <-state.ProvisionalAdditionalEgress
 	provEgress -= actualReqEgress
-	go func() { *state.ProvisionalAdditionalEgress <- provEgress }()
+	go func() { state.ProvisionalAdditionalEgress <- provEgress }()
 }
 
 // Returns true if the user can now be forgotten

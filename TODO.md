@@ -1,8 +1,7 @@
 * Upgrade Go
-* Use chan x instead of *chan x?
 
 # Unimportant
- * Allow concurrent reads if there are no writes
+ * Use MutexValue instead of channels?
  * Scan for available ports during tests to allow concurrency
 
 # Tests

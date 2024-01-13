@@ -2,6 +2,8 @@ package endpoints_test
 
 import (
 	"encoding/json"
+	"net/http/httptest"
+	"sync"
 	"testing"
 	"time"
 
@@ -109,7 +111,7 @@ func testContiniousRequests(
 		checkTotalReqCount()
 
 		if time.Since(startTime) >= env.USER_RESET_TIME-2 {
-			t.Fatal("couldn't reach daily limit before it was reset. is your computer busy?")
+			t.Fatal("couldn't reach daily limit before it was reset. Is your computer busy?")
 		}
 
 		expect429 := func() {
@@ -145,5 +147,103 @@ func testContiniousRequests(
 	// We want to wait from when the last request was sent, so no need to subtract anything
 	time.Sleep(env.GCP_EGRESS_LATENCY)
 	assert.Equal(t, int64(0), test.ReadChannel(state.ProvisionalAdditionalEgress))
-	assert.Equal(t, totalBodyEgress, state.MeasuredEgress)
+	assert.Equal(t, totalBodyEgress, state.MeasuredEgress.SimpleRead())
+}
+
+func TestDdosSmallFiles(t *testing.T) {
+	testDdos(1, t)
+}
+func TestDdosLargerFiles(t *testing.T) {
+	testDdos(7_500_000, t)
+}
+func TestDdosReqCap(t *testing.T) {
+	// TODO
+}
+func testDdos(reqSize int, t *testing.T) {
+	startTime := time.Now().UTC()
+	r, state, env := test.InitProgram(&test.Config{
+		/*
+			Smaller than constants.MIN_REQUEST_EGRESS so the handling of the disparity
+			between the cautious total egress and the eventual actual egress can be tested
+		*/
+		RandomContentLength: reqSize,
+		DisableRequestLog:   true,
+	})
+
+	reqSizePlusOverhead := int64(reqSize) + constants.ASSUMED_OVERHEAD
+	effectiveSize := max(reqSizePlusOverhead, constants.MIN_REQUEST_EGRESS)
+	const CLIENT_COUNT = 100
+
+	requestUntil503 := func() {
+		nextIP := make(chan uint)
+		go func() { nextIP <- test.FourBytesToUint(1, 1, 1, 1) }()
+		makeRequestWithUniqueIP := func() *httptest.ResponseRecorder {
+			ip := <-nextIP
+			go func() { nextIP <- ip + 1 }()
+
+			req := test.NewRequest("GET", "/v1/object/foo.bar", nil, env)
+			req.Header.Set(env.PROXY_ORIGINAL_IP_HEADER_NAME, test.FormatIp(test.UintToFourBytes(ip)))
+			return test.FetchUsingRequest(req, r)
+		}
+
+		// The requests should be made quick enough here that a lot of them won't be corrected until the loop exits
+		maxTime := env.GCP_RESET_TICK_DELAY - (env.GCP_EGRESS_LATENCY + 5)
+		var wg sync.WaitGroup
+		for i := 0; i < CLIENT_COUNT; i++ {
+			wg.Add(1)
+
+			go func() {
+				for {
+					w := makeRequestWithUniqueIP()
+					assert.NotEqual(t, 429, w.Code) // Each user shouldn't send enough to get a 429
+
+					if w.Code == 503 || time.Since(startTime) >= maxTime {
+						break
+					}
+				}
+				wg.Done()
+			}()
+		}
+		wg.Wait()
+		time.Sleep(2 * time.Millisecond)
+		if time.Since(startTime) >= maxTime {
+			t.Fatal("couldn't reach total monthly limit before it was reset. Is your computer busy?")
+		}
+
+		reqCount := test.ReadChannel(state.MonthlyRequestCount)
+		cautiousTotalEgress := state.MeasuredEgress.SimpleRead() + test.ReadChannel(state.ProvisionalAdditionalEgress)
+		t.Logf(
+			"cautiously high total egress: %v\nrequest count: %v",
+			cautiousTotalEgress,
+			reqCount,
+		)
+		assert.Less(t, reqCount, env.MAX_TOTAL_REQUESTS) // The egress should be what capped it
+
+		time.Sleep(env.GCP_EGRESS_LATENCY)
+		cautiousTotalEgress = state.MeasuredEgress.SimpleRead() + test.ReadChannel(state.ProvisionalAdditionalEgress)
+		maxOvershoot := env.MAX_TOTAL_EGRESS + (effectiveSize * CLIENT_COUNT) // Because request cancelling isn't emulated
+		withinOvershoot := cautiousTotalEgress <= maxOvershoot
+		assert.True(t, withinOvershoot)
+		t.Logf("cautiously high total egress after env.GCP_EGRESS_LATENCY: %v", cautiousTotalEgress)
+
+		w := makeRequestWithUniqueIP()
+		if cautiousTotalEgress+constants.MIN_REQUEST_EGRESS > env.MAX_TOTAL_EGRESS {
+			assert.Equal(t, 503, w.Code)
+		} else {
+			assert.Equal(t, 200, w.Code)
+		}
+	}
+	requestUntil503()
+	// Because of the provisional egress system, egress can be counted twice until env.GCP_EGRESS_LATENCY passes
+	// So it should now be possible to make a few more requests
+	requestUntil503()
+
+	time.Sleep((env.GCP_RESET_TICK_DELAY - time.Since(startTime)) + env.GCP_EGRESS_LATENCY)
+	startTime = startTime.Add(env.GCP_RESET_TICK_DELAY)
+	t.Log("- 2nd batch after the month has ended -")
+	assert.Equal(t, int64(0), state.MeasuredEgress.SimpleRead())
+	assert.Equal(t, int64(0), test.ReadChannel(state.ProvisionalAdditionalEgress))
+	assert.Equal(t, int64(0), test.ReadChannel(state.MonthlyRequestCount))
+	requestUntil503()
+	requestUntil503()
 }

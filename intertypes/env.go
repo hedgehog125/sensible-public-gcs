@@ -20,6 +20,8 @@ type Env struct {
 	IS_TEST       bool
 
 	// Not an actual environment variable, just uses different constants when testing
+	DISABLE_REQUEST_LOGS bool
+	// Not an actual environment variable, just uses different constants when testing
 	GCP_EGRESS_LATENCY time.Duration
 	// Not an actual environment variable, just uses different constants when testing
 	GCP_MONITOR_TICK_DELAY time.Duration

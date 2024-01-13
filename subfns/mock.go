@@ -11,18 +11,17 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/hedgeghog125/sensible-public-gcs/constants"
 	"github.com/hedgeghog125/sensible-public-gcs/intertypes"
-	"github.com/hedgeghog125/sensible-public-gcs/util"
 )
 
 type MockGCPClient struct {
 	RandomContent  []byte
-	MeasuredEgress *chan int64
+	MeasuredEgress chan int64
 	Env            *intertypes.Env
 }
 
 func (client *MockGCPClient) GetEgress(env *intertypes.Env) (int64, error) {
-	value := <-*client.MeasuredEgress
-	go func() { *client.MeasuredEgress <- value }()
+	value := <-client.MeasuredEgress
+	go func() { client.MeasuredEgress <- value }()
 
 	return value, nil
 }
@@ -69,9 +68,9 @@ func (client *MockGCPClient) FetchObject(
 			time.Duration(float64(client.Env.GCP_MONITOR_TICK_DELAY.Nanoseconds()) * (rand.Float64() + 1)),
 		)
 
-		measuredEgress := <-*client.MeasuredEgress
+		measuredEgress := <-client.MeasuredEgress
 		measuredEgress += int64(length) + constants.ASSUMED_OVERHEAD
-		*client.MeasuredEgress <- measuredEgress
+		client.MeasuredEgress <- measuredEgress
 	}()
 
 	return response, false
@@ -79,17 +78,17 @@ func (client *MockGCPClient) FetchObject(
 func NewMockGCPClient(randomContentLength int, env *intertypes.Env) *MockGCPClient {
 	client := MockGCPClient{
 		RandomContent:  bytes.Repeat([]byte("a"), randomContentLength),
-		MeasuredEgress: util.Pointer(make(chan int64)),
+		MeasuredEgress: make(chan int64),
 		Env:            env,
 	}
-	go func() { *client.MeasuredEgress <- 0 }()
+	go func() { client.MeasuredEgress <- 0 }()
 
 	go func() {
 		for {
 			time.Sleep(env.GCP_RESET_TICK_DELAY)
 			go func() {
-				<-*client.MeasuredEgress
-				*client.MeasuredEgress <- 0
+				<-client.MeasuredEgress
+				client.MeasuredEgress <- 0
 			}()
 		}
 	}()

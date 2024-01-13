@@ -30,7 +30,7 @@ func getUsed(ip string, state *intertypes.State, env *intertypes.Env) int64 {
 	}
 
 	defer func() {
-		go func() { *userChan <- user }()
+		go func() { userChan <- user }()
 	}()
 	UserTick(user, time.Now().UTC(), env)
 	return user.EgressUsed

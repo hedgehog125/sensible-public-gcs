@@ -5,7 +5,7 @@ import (
 )
 
 func CalculateCautiousEgress(state *intertypes.State) int64 {
-	return state.MeasuredEgress + ReadAndResendChannel[int64](
+	return state.MeasuredEgress.SimpleRead() + ReadAndResendChannel[int64](
 		state.ProvisionalAdditionalEgress,
 	)
 }

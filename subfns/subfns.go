@@ -8,6 +8,7 @@ import (
 	"github.com/hedgeghog125/sensible-public-gcs/intertypes"
 	"github.com/hedgeghog125/sensible-public-gcs/util"
 	"github.com/joho/godotenv"
+	"github.com/puzpuzpuz/xsync/v3"
 )
 
 func LoadEnvironmentVariables() *intertypes.Env {
@@ -43,12 +44,13 @@ func LoadEnvironmentVariables() *intertypes.Env {
 }
 func InitState() *intertypes.State {
 	state := intertypes.State{
-		Users:                       make(map[string]*chan *intertypes.User),
-		ProvisionalAdditionalEgress: util.Pointer[chan int64](make(chan int64)),
-		MonthlyRequestCount:         util.Pointer[chan int64](make(chan int64)),
+		Users:                       xsync.NewMapOf[string, chan *intertypes.User](),
+		ProvisionalAdditionalEgress: make(chan int64),
+		MonthlyRequestCount:         make(chan int64),
+		MeasuredEgress:              &intertypes.MutexValue[int64]{},
 	}
-	go func() { *state.ProvisionalAdditionalEgress <- 0 }()
-	go func() { *state.MonthlyRequestCount <- 0 }()
+	go func() { state.ProvisionalAdditionalEgress <- 0 }()
+	go func() { state.MonthlyRequestCount <- 0 }()
 
 	return &state
 }
@@ -85,8 +87,8 @@ func StartTickFns(client intertypes.GCPClient, state *intertypes.State, env *int
 
 			go func() {
 				// I think consuming the channel first is necessary?
-				fmt.Printf("monthly total request count before reset: %v\n", <-*state.MonthlyRequestCount)
-				*state.MonthlyRequestCount <- 0
+				fmt.Printf("monthly total request count before reset: %v\n", <-state.MonthlyRequestCount)
+				state.MonthlyRequestCount <- 0
 			}()
 		}
 	}()

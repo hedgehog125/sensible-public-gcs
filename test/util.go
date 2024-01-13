@@ -3,6 +3,7 @@ package test
 import (
 	"fmt"
 	"io"
+	"math"
 	"net/http"
 	"net/http/httptest"
 
@@ -37,12 +38,24 @@ func NewRequest(method string, url string, body io.Reader, env *intertypes.Env) 
 }
 
 // This is in the test package as opposed to util as you almost always want to lock the channel for a moment when reading it. But in tests, you usually just want to check a value.
-func ReadChannel[T any](c *chan T) T {
-	value := <-*c
+func ReadChannel[T any](c chan T) T {
+	value := <-c
 	defer func() {
 		go func() {
-			*c <- value
+			c <- value
 		}()
 	}()
 	return value
+}
+func FourBytesToUint(num1 int, num2 int, num3 int, num4 int) uint {
+	return uint(num1+(num2*256)+(num3*65536)) + uint(num4*16777216)
+}
+func UintToFourBytes(num uint) (int, int, int, int) {
+	return int(num % 256),
+		int(uint(math.Floor(float64(num)/256)) % 256),
+		int(uint(math.Floor(float64(num)/65536)) % 256),
+		int(uint(math.Floor(float64(num)/16777216)) % 256)
+}
+func FormatIp(num1 int, num2 int, num3 int, num4 int) string {
+	return fmt.Sprintf("%v.%v.%v.%v", num1, num2, num3, num4)
 }
