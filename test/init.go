@@ -11,9 +11,10 @@ import (
 )
 
 type Config struct {
-	RandomContentLength int
-	DisableProxy        bool
-	DisableRequestLog   bool
+	RandomContentLength     int
+	DisableProxy            bool
+	DisableRequestLog       bool
+	UseLowTotalRequestLimit bool
 }
 
 func InitProgram(config *Config) (*gin.Engine, *intertypes.State, *intertypes.Env) {
@@ -28,15 +29,21 @@ func InitProgram(config *Config) (*gin.Engine, *intertypes.State, *intertypes.En
 	os.Setenv("GIN_MODE", "release")
 	gin.SetMode(gin.ReleaseMode)
 
+	maxTotalRequests := int64(500_000)
+	maxTotalEgress := 1000 * max(int64(config.RandomContentLength), constants.MIN_REQUEST_EGRESS)
+	if config.UseLowTotalRequestLimit {
+		maxTotalRequests = 1000
+		maxTotalEgress *= 100 // So the total egress isn't the limiting factor
+	}
 	env := intertypes.Env{
 		PORT:                          8000,
 		CORS_ALLOWED_ORIGINS:          []string{"*"},
 		PROXY_ORIGINAL_IP_HEADER_NAME: "",
 
 		DAILY_EGRESS_PER_USER:          15_000_000, // 15MB
-		MAX_TOTAL_EGRESS:               1000 * max(int64(config.RandomContentLength), constants.MIN_REQUEST_EGRESS),
+		MAX_TOTAL_EGRESS:               maxTotalEgress,
 		MEASURE_TOTAL_EGRESS_FROM_ZERO: true,
-		MAX_TOTAL_REQUESTS:             500_000,
+		MAX_TOTAL_REQUESTS:             maxTotalRequests,
 
 		IS_PROXY_TEST: false,
 		IS_TEST:       true,

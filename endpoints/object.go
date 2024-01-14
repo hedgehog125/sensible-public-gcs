@@ -121,7 +121,7 @@ func Object(r *gin.Engine, client intertypes.GCPClient, state *intertypes.State,
 func capTotalReqCount(ctx *gin.Context, state *intertypes.State, env *intertypes.Env) bool {
 	reqCount := <-state.MonthlyRequestCount
 	newReqCount := reqCount + 1
-	if newReqCount >= env.MAX_TOTAL_REQUESTS {
+	if newReqCount > env.MAX_TOTAL_REQUESTS {
 		go func() { state.MonthlyRequestCount <- reqCount }()
 		util.Send503(ctx) // TODO: move to outer function
 		return true

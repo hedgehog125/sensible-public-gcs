@@ -151,23 +151,27 @@ func testContiniousRequests(
 }
 
 func TestDdosSmallFiles(t *testing.T) {
-	testDdos(1, t)
+	testDdos(1, false, t)
 }
 func TestDdosLargerFiles(t *testing.T) {
-	testDdos(7_500_000, t)
+	testDdos(7_500_000, false, t)
 }
-func TestDdosReqCap(t *testing.T) {
-	// TODO
+func TestDdosReqCountCap(t *testing.T) {
+	testDdos(7_500_000, true, t)
 }
-func testDdos(reqSize int, t *testing.T) {
+func testDdos(
+	reqSize int, checkingCountCap bool,
+	t *testing.T,
+) {
 	startTime := time.Now().UTC()
 	r, state, env := test.InitProgram(&test.Config{
 		/*
 			Smaller than constants.MIN_REQUEST_EGRESS so the handling of the disparity
 			between the cautious total egress and the eventual actual egress can be tested
 		*/
-		RandomContentLength: reqSize,
-		DisableRequestLog:   true,
+		RandomContentLength:     reqSize,
+		DisableRequestLog:       true,
+		UseLowTotalRequestLimit: checkingCountCap,
 	})
 
 	reqSizePlusOverhead := int64(reqSize) + constants.ASSUMED_OVERHEAD
@@ -217,20 +221,28 @@ func testDdos(reqSize int, t *testing.T) {
 			cautiousTotalEgress,
 			reqCount,
 		)
-		assert.Less(t, reqCount, env.MAX_TOTAL_REQUESTS) // The egress should be what capped it
+		if checkingCountCap {
+			assert.Equal(t, env.MAX_TOTAL_REQUESTS, reqCount)
+		} else {
+			assert.Less(t, reqCount, env.MAX_TOTAL_REQUESTS) // The egress should be what capped it
+		}
 
 		time.Sleep(env.GCP_EGRESS_LATENCY)
-		cautiousTotalEgress = state.MeasuredEgress.SimpleRead() + test.ReadChannel(state.ProvisionalAdditionalEgress)
-		maxOvershoot := env.MAX_TOTAL_EGRESS + (effectiveSize * CLIENT_COUNT) // Because request cancelling isn't emulated
-		withinOvershoot := cautiousTotalEgress <= maxOvershoot
-		assert.True(t, withinOvershoot)
-		t.Logf("cautiously high total egress after env.GCP_EGRESS_LATENCY: %v", cautiousTotalEgress)
+		expectingSpareRequests := false
+		if !checkingCountCap {
+			cautiousTotalEgress = state.MeasuredEgress.SimpleRead() + test.ReadChannel(state.ProvisionalAdditionalEgress)
+			maxOvershoot := env.MAX_TOTAL_EGRESS + (effectiveSize * CLIENT_COUNT) // Because request cancelling isn't emulated
+			withinOvershoot := cautiousTotalEgress <= maxOvershoot
+			assert.True(t, withinOvershoot)
+			t.Logf("cautiously high total egress after env.GCP_EGRESS_LATENCY: %v", cautiousTotalEgress)
+			expectingSpareRequests = cautiousTotalEgress+constants.MIN_REQUEST_EGRESS <= env.MAX_TOTAL_EGRESS
+		}
 
 		w := makeRequestWithUniqueIP()
-		if cautiousTotalEgress+constants.MIN_REQUEST_EGRESS > env.MAX_TOTAL_EGRESS {
-			assert.Equal(t, 503, w.Code)
-		} else {
+		if expectingSpareRequests {
 			assert.Equal(t, 200, w.Code)
+		} else {
+			assert.Equal(t, 503, w.Code)
 		}
 	}
 	requestUntil503()
