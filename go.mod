@@ -1,6 +1,6 @@
 module github.com/hedgeghog125/sensible-public-gcs
 
-go 1.21.4
+go 1.21.6
 
 require (
 	cloud.google.com/go/monitoring v1.16.3
