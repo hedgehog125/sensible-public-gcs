@@ -1,0 +1,5 @@
+package test
+
+const DEFAULT_RANDOM_CONTENT_LENGTH = 7_500_000 // 7.5 MB
+const PROXY_ORIGINAL_IP_HEADER_NAME = "X-Test-IP"
+const TEST_IP = "42.42.42.42"

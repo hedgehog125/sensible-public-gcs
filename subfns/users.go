@@ -9,27 +9,28 @@ import (
 	"github.com/hedgeghog125/sensible-public-gcs/intertypes"
 )
 
-func UsersTick(state *intertypes.State) {
+func UsersTick(state *intertypes.State, env *intertypes.Env) {
 	var wg sync.WaitGroup
 
-	now := time.Now().Unix()
-	for ip, userChan := range state.Users {
+	now := time.Now().UTC()
+	state.Users.Range(func(ip string, userChan chan *intertypes.User) bool {
 		wg.Add(1)
-		ip, userChan := ip, userChan
 
 		go func() {
 			defer wg.Done()
-			user := <-*userChan
+			user := <-userChan
 
-			if endpoints.UserTick(user, now) {
-				fmt.Printf("Forgot %v\n", ip)
-				delete(state.Users, ip)
-				return
+			if endpoints.UserTick(user, now, env) {
+				if !env.DISABLE_REQUEST_LOGS {
+					fmt.Printf("forgot %v\n", ip)
+				}
+				state.Users.Delete(ip)
+				user = nil // So nil is put back into the channel
 			}
 
-			go func() { *userChan <- user }()
+			go func() { userChan <- user }()
 		}()
-	}
-
+		return true
+	})
 	wg.Wait()
 }

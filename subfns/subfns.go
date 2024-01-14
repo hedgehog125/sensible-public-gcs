@@ -5,18 +5,24 @@ import (
 	"os"
 	"time"
 
-	monitoring "cloud.google.com/go/monitoring/apiv3/v2"
 	"github.com/hedgeghog125/sensible-public-gcs/intertypes"
 	"github.com/hedgeghog125/sensible-public-gcs/util"
 	"github.com/joho/godotenv"
+	"github.com/puzpuzpuz/xsync/v3"
 )
 
-func LoadEnvironmentVariables() intertypes.Env {
+func LoadEnvironmentVariables() *intertypes.Env {
 	_ = godotenv.Load(".env.local.keys")
 	_ = godotenv.Load(".env.local")
 	_ = godotenv.Load(".env")
 
-	env := intertypes.Env{}
+	env := intertypes.Env{
+		GCP_EGRESS_LATENCY:     3 * time.Minute,
+		GCP_MONITOR_TICK_DELAY: 1 * time.Minute,
+		GCP_RESET_TICK_DELAY:   -1,
+		USER_TICK_DELAY:        12 * time.Hour,
+		USER_RESET_TIME:        24 * time.Hour,
+	}
 
 	env.PORT = util.RequireIntEnv("PORT")
 	env.CORS_ALLOWED_ORIGINS = util.RequireStrArrEnv("CORS_ALLOWED_ORIGINS")
@@ -34,41 +40,56 @@ func LoadEnvironmentVariables() intertypes.Env {
 	env.IS_DEV = util.RequireEnv("GIN_MODE") == "debug"
 	env.IS_TEST = os.Getenv("IS_TEST") == "true"
 
-	return env
+	return &env
 }
-func InitState() intertypes.State {
+func InitState() *intertypes.State {
 	state := intertypes.State{
-		Users:                       make(map[string]*chan *intertypes.User),
-		ProvisionalAdditionalEgress: util.Pointer[chan int64](make(chan int64)),
-		MonthlyRequestCount:         util.Pointer[chan int64](make(chan int64)),
+		Users:                       xsync.NewMapOf[string, chan *intertypes.User](),
+		ProvisionalAdditionalEgress: make(chan int64),
+		MonthlyRequestCount:         make(chan int64),
+		MeasuredEgress:              &intertypes.MutexValue[int64]{},
 	}
-	go func() { *state.ProvisionalAdditionalEgress <- 0 }()
-	go func() { *state.MonthlyRequestCount <- 0 }()
+	go func() { state.ProvisionalAdditionalEgress <- 0 }()
+	go func() { state.MonthlyRequestCount <- 0 }()
 
-	return state
+	return &state
 }
-func StartTickFns(mClient *monitoring.QueryClient, state *intertypes.State, env *intertypes.Env) {
+func StartTickFns(client intertypes.GCPClient, state *intertypes.State, env *intertypes.Env) {
 	go func() {
+		elapsed := time.Duration(0)
 		for {
-			time.Sleep(time.Minute)
-			GCPMonitoringTick(mClient, false, state, env)
+			time.Sleep(env.GCP_MONITOR_TICK_DELAY - elapsed)
+			startTime := time.Now().UTC()
+			GCPMonitoringTick(client, false, state, env)
+			elapsed = time.Since(startTime)
+		}
+	}()
+	go func() {
+		elapsed := time.Duration(0)
+		for {
+			time.Sleep(env.USER_TICK_DELAY - elapsed)
+			startTime := time.Now().UTC()
+			UsersTick(state, env)
+			elapsed = time.Since(startTime)
 		}
 	}()
 	go func() {
 		for {
-			time.Sleep(12 * time.Hour)
-			UsersTick(state)
-		}
-	}()
-	go func() {
-		for {
-			now := time.Now()
-			startOfNextMonth := time.Date(now.Year(), now.Month()+1, 1, 0, 0, 0, 0, time.UTC)
-			secondsUntilNextMonth := startOfNextMonth.Unix() - now.Unix()
+			if env.GCP_RESET_TICK_DELAY == -1 {
+				now := time.Now().UTC()
+				startOfNextMonth := time.Date(now.Year(), now.Month()+1, 1, 0, 0, 0, 0, time.UTC)
+				timeUntilNextMonth := startOfNextMonth.Sub(now)
 
-			time.Sleep(time.Duration(secondsUntilNextMonth) * time.Second)
-			fmt.Printf("monthly total request count before reset: %v\n", <-*state.MonthlyRequestCount)
-			go func() { *state.MonthlyRequestCount <- 0 }()
+				time.Sleep(timeUntilNextMonth)
+			} else {
+				time.Sleep(env.GCP_RESET_TICK_DELAY)
+			}
+
+			go func() {
+				// I think consuming the channel first is necessary?
+				fmt.Printf("monthly total request count before reset: %v\n", <-state.MonthlyRequestCount)
+				state.MonthlyRequestCount <- 0
+			}()
 		}
 	}()
 }

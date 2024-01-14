@@ -1,14 +1,13 @@
 package subfns
 
 import (
-	"cloud.google.com/go/storage"
 	"github.com/gin-gonic/gin"
 	"github.com/hedgeghog125/sensible-public-gcs/endpoints"
 	"github.com/hedgeghog125/sensible-public-gcs/intertypes"
 )
 
 func RegisterEndpoints(
-	r *gin.Engine, bucket *storage.BucketHandle,
+	r *gin.Engine, client intertypes.GCPClient,
 	state *intertypes.State, env *intertypes.Env,
 ) {
 	endpoints.Health(r)
@@ -17,7 +16,7 @@ func RegisterEndpoints(
 	if env.IS_PROXY_TEST {
 		endpoints.Debug(r)
 	} else {
-		endpoints.Object(r, bucket, state, env)
+		endpoints.Object(r, client, state, env)
 		endpoints.RemainingEgress(r, state, env)
 	}
 }

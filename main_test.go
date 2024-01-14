@@ -1,4 +1,4 @@
-package main
+package main_test
 
 import (
 	"os"
@@ -6,6 +6,6 @@ import (
 )
 
 func TestMain(m *testing.M) {
-	os.Setenv("IS_TEST", "true")
-	// TODO
+	exitCode := m.Run()
+	os.Exit(exitCode)
 }

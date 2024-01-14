@@ -10,7 +10,11 @@ import (
 )
 
 func CreateServer(env *intertypes.Env) *gin.Engine {
-	r := gin.Default()
+	r := gin.New()
+	if !env.DISABLE_REQUEST_LOGS {
+		r.Use(gin.Logger())
+	}
+	r.Use(gin.Recovery())
 	r.SetTrustedProxies(nil)
 	r.TrustedPlatform = env.PROXY_ORIGINAL_IP_HEADER_NAME
 
