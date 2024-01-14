@@ -100,6 +100,7 @@ func Object(r *gin.Engine, client intertypes.GCPClient, state *intertypes.State,
 		}
 
 		{
+			// There's no provisional figure to subtract first since the user's still locked at this point
 			newEgressUsed := user.EgressUsed + reqEgress
 			if newEgressUsed > env.DAILY_EGRESS_PER_USER {
 				user.EgressUsed += constants.MIN_REQUEST_EGRESS
