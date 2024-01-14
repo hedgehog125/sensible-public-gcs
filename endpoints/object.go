@@ -21,7 +21,8 @@ func Object(r *gin.Engine, client intertypes.GCPClient, state *intertypes.State,
 			return
 		}
 
-		if capTotalReqCount(ctx, state, env) {
+		if capTotalReqCount(state, env) {
+			util.Send503(ctx)
 			return
 		}
 
@@ -30,7 +31,8 @@ func Object(r *gin.Engine, client intertypes.GCPClient, state *intertypes.State,
 			go undoTotalReqCountIfNotSent(gcpRequestMade, state)
 		}()
 
-		if capTotalEgress(constants.MIN_REQUEST_EGRESS, 0, ctx, state, env) {
+		if capTotalEgress(constants.MIN_REQUEST_EGRESS, 0, state, env) {
+			util.Send503(ctx)
 			return
 		}
 
@@ -90,9 +92,10 @@ func Object(r *gin.Engine, client intertypes.GCPClient, state *intertypes.State,
 		}
 
 		reqEgress = max(contentLength+constants.ASSUMED_OVERHEAD, constants.MIN_REQUEST_EGRESS)
-		if capTotalEgress(reqEgress, constants.MIN_REQUEST_EGRESS, ctx, state, env) {
+		if capTotalEgress(reqEgress, constants.MIN_REQUEST_EGRESS, state, env) {
 			_ = res.Body.Close()
 			reqEgress = constants.MIN_REQUEST_EGRESS // So the defer subtracts the right value when updating the totals using "written"
+			util.Send503(ctx)
 			return
 		}
 
@@ -116,14 +119,13 @@ func Object(r *gin.Engine, client intertypes.GCPClient, state *intertypes.State,
 	})
 }
 
-// Returns true if it's sent a 503
+// Returns true if the request should be blocked
 // Also increases state.MonthlyRequestCount
-func capTotalReqCount(ctx *gin.Context, state *intertypes.State, env *intertypes.Env) bool {
+func capTotalReqCount(state *intertypes.State, env *intertypes.Env) bool {
 	reqCount := <-state.MonthlyRequestCount
 	newReqCount := reqCount + 1
 	if newReqCount > env.MAX_TOTAL_REQUESTS {
 		go func() { state.MonthlyRequestCount <- reqCount }()
-		util.Send503(ctx) // TODO: move to outer function
 		return true
 	}
 	reqCount = newReqCount
@@ -139,12 +141,12 @@ func undoTotalReqCountIfNotSent(gcpRequestMade bool, state *intertypes.State) {
 	}
 }
 
-// Returns true if it's sent a 503
+// Returns true if the request should be blocked
 //
 // Also increases state.ProvisionalAdditionalEgress
 func capTotalEgress(
 	reqEgress int64, formerProvReqEgress int64,
-	ctx *gin.Context, state *intertypes.State, env *intertypes.Env,
+	state *intertypes.State, env *intertypes.Env,
 ) bool {
 	provEgress := <-state.ProvisionalAdditionalEgress
 	cautiousTotalEgress := state.MeasuredEgress.SimpleRead() + provEgress
@@ -153,7 +155,6 @@ func capTotalEgress(
 	// Minus formerProvReqEgress because the total egress was temporarily increased by that earlier
 	if remainingCautiousTotalEgress < reqEgress-formerProvReqEgress {
 		go func() { state.ProvisionalAdditionalEgress <- provEgress }()
-		util.Send503(ctx) // TODO: move to outer function
 		return true
 	}
 	provEgress -= formerProvReqEgress

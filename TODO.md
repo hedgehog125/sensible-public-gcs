@@ -9,9 +9,5 @@
 ## Basic Endpoints
 
 ## Mock Systems
- * Create signed URL
- * Get GCS egress
 
 ## Sequences
- * Is the egress reset after a 'day'? Can the user then hit the limit again?
- * Multiple simultanious users?
